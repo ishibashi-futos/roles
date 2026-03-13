@@ -19,7 +19,7 @@ type CreatePhase1AppOptions = {
 };
 
 const renderMessages = (messages: RequirementMessage[]) =>
-  messages.map((message, index) => (
+  [...messages].reverse().map((message, index) => (
     <article
       id={`message-${index}`}
       class={`rounded-2xl border px-4 py-3 ${
@@ -137,21 +137,23 @@ const RootPage = ({ session }: { session: RequirementSession | null }) => (
           初期テーマを入力すると、要件定義役が不足情報を対話で回収し、議論に必要な論点とロールを構造化します。
         </p>
 
-        <form id="topic-form" class="mt-8 space-y-4">
+        <form id="message-form" class="mt-8 space-y-4">
           <label
+            id="message-input-label"
             class="block text-sm font-medium text-slate-200"
-            for="topic-input"
+            for="message-input"
           >
             テーマ
           </label>
           <textarea
-            id="topic-input"
-            name="topic"
+            id="message-input"
+            name="message"
             rows={5}
             class="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm leading-6 text-white outline-none transition focus:border-amber-300"
             placeholder="例: SIer 営業の行動データ化を進めるための要件を整理したい"
           />
           <button
+            id="message-submit"
             class="rounded-full bg-amber-300 px-5 py-3 text-sm font-semibold text-slate-950 transition hover:bg-amber-200"
             type="submit"
           >
@@ -176,31 +178,6 @@ const RootPage = ({ session }: { session: RequirementSession | null }) => (
             {session ? renderMessages(session.messages) : null}
           </div>
         </section>
-
-        <form id="reply-form" class="mt-6 space-y-4">
-          <label
-            class="block text-sm font-medium text-slate-200"
-            for="reply-input"
-          >
-            追加回答
-          </label>
-          <textarea
-            id="reply-input"
-            name="message"
-            rows={4}
-            disabled
-            class="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm leading-6 text-white outline-none transition disabled:cursor-not-allowed disabled:opacity-50"
-            placeholder="要件定義役から質問が返ってきたら回答を入力"
-          />
-          <button
-            id="reply-submit"
-            class="rounded-full border border-white/20 px-5 py-3 text-sm font-semibold text-white transition hover:border-amber-300 hover:text-amber-200 disabled:cursor-not-allowed disabled:opacity-50"
-            type="submit"
-            disabled
-          >
-            回答を送信
-          </button>
-        </form>
       </section>
 
       <section>
@@ -231,13 +208,13 @@ const state = {
   eventSource: null,
   completed: false,
   seenEventIds: new Set(),
+  awaitingResponse: false,
 };
 
-const topicForm = document.getElementById("topic-form");
-const replyForm = document.getElementById("reply-form");
-const topicInput = document.getElementById("topic-input");
-const replyInput = document.getElementById("reply-input");
-const replySubmit = document.getElementById("reply-submit");
+const messageForm = document.getElementById("message-form");
+const messageInput = document.getElementById("message-input");
+const messageInputLabel = document.getElementById("message-input-label");
+const messageSubmit = document.getElementById("message-submit");
 const messages = document.getElementById("messages");
 const statusText = document.getElementById("status-text");
 const resultPanel = document.getElementById("result-panel");
@@ -257,7 +234,7 @@ const renderMessage = (roleLabel, content, isAssistant) => {
     <p class="text-xs font-semibold uppercase tracking-[0.24em] text-slate-500">\${roleLabel}</p>
     <p class="mt-2 whitespace-pre-wrap text-sm leading-6 text-slate-700">\${escapeHtml(content)}</p>
   \`;
-  messages.appendChild(article);
+  messages.prepend(article);
 };
 
 const renderList = (title, items) => \`
@@ -313,9 +290,30 @@ const renderResult = (result) => {
   \`;
 };
 
-const setReplyEnabled = (enabled) => {
-  replyInput.disabled = !enabled;
-  replySubmit.disabled = !enabled;
+const updateInputMode = () => {
+  if (state.completed) {
+    messageInputLabel.textContent = "完了";
+    messageInput.placeholder = "要件定義は完了しました。";
+    messageSubmit.textContent = "完了";
+    messageInput.disabled = true;
+    messageSubmit.disabled = true;
+    return;
+  }
+
+  if (!state.sessionId) {
+    messageInputLabel.textContent = "テーマ";
+    messageInput.placeholder = "例: SIer 営業の行動データ化を進めるための要件を整理したい";
+    messageSubmit.textContent = "要件定義を開始";
+    messageInput.disabled = state.awaitingResponse;
+    messageSubmit.disabled = state.awaitingResponse;
+    return;
+  }
+
+  messageInputLabel.textContent = "追加回答";
+  messageInput.placeholder = "要件定義役から質問が返ってきたら、ここに回答を入力";
+  messageSubmit.textContent = "回答を送信";
+  messageInput.disabled = state.awaitingResponse;
+  messageSubmit.disabled = state.awaitingResponse;
 };
 
 const closeEventSource = () => {
@@ -346,8 +344,10 @@ const connectEvents = () => {
     }
     const payload = JSON.parse(event.data);
     renderMessage("要件定義役", payload.content, true);
-    statusText.textContent = "要件定義役が応答しました。";
-    setReplyEnabled(!state.completed);
+    statusText.textContent =
+      "要件定義役が内容を整理し、次に確認したいことをまとめました。";
+    state.awaitingResponse = false;
+    updateInputMode();
   });
   state.eventSource.addEventListener("requirements_completed", (event) => {
     if (!shouldHandleEvent(event)) {
@@ -355,9 +355,11 @@ const connectEvents = () => {
     }
     const payload = JSON.parse(event.data);
     state.completed = true;
+    state.awaitingResponse = false;
     renderResult(payload.result);
-    setReplyEnabled(false);
-    statusText.textContent = "要件とロール定義が確定しました。";
+    updateInputMode();
+    statusText.textContent =
+      "整理が完了しました。要件・論点・ロール定義を確認できます。";
     closeEventSource();
   });
   state.eventSource.addEventListener("error", (event) => {
@@ -366,57 +368,67 @@ const connectEvents = () => {
     }
     const payload = JSON.parse(event.data);
     statusText.textContent = payload.message;
-    setReplyEnabled(false);
+    state.awaitingResponse = false;
+    updateInputMode();
     closeEventSource();
   });
 };
 
-topicForm.addEventListener("submit", async (event) => {
+messageForm.addEventListener("submit", async (event) => {
   event.preventDefault();
-  const topic = topicInput.value.trim();
-  if (!topic) {
-    statusText.textContent = "テーマを入力してください。";
+  const message = messageInput.value.trim();
+  if (!message) {
+    statusText.textContent = state.sessionId
+      ? "追加回答を入力してください。"
+      : "テーマを入力してください。";
     return;
   }
 
-  messages.innerHTML = "";
-  resultPanel.innerHTML = '<section class="rounded-3xl border border-dashed border-slate-300 bg-white/70 p-6"><p class="text-sm text-slate-500">ここに要件定義、論点、ロール定義が表示されます。</p></section>';
-  state.completed = false;
-  state.seenEventIds = new Set();
-  statusText.textContent = "セッションを作成しています。";
-  setReplyEnabled(false);
-  renderMessage("あなた", topic, false);
-
-  const response = await fetch("/api/phase1/sessions", {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ topic }),
-  });
-
-  if (!response.ok) {
-    statusText.textContent = "セッションの作成に失敗しました。";
+  if (state.awaitingResponse || state.completed) {
     return;
   }
 
-  const payload = await response.json();
-  state.sessionId = payload.sessionId;
-  sessionBadge.dataset.sessionId = payload.sessionId;
-  sessionBadge.textContent = \`Session: \${payload.sessionId}\`;
-  connectEvents();
-  statusText.textContent = "要件定義役の確認を待っています。";
-});
-
-replyForm.addEventListener("submit", async (event) => {
-  event.preventDefault();
-  const message = replyInput.value.trim();
-  if (!message || !state.sessionId) {
-    return;
-  }
-
+  const isNewSession = !state.sessionId;
   renderMessage("あなた", message, false);
-  replyInput.value = "";
-  setReplyEnabled(false);
-  statusText.textContent = "回答を送信しました。";
+  messageInput.value = "";
+  state.awaitingResponse = true;
+  updateInputMode();
+
+  if (isNewSession) {
+    messages.innerHTML = "";
+    resultPanel.innerHTML = '<section class="rounded-3xl border border-dashed border-slate-300 bg-white/70 p-6"><p class="text-sm text-slate-500">ここに要件定義、論点、ロール定義が表示されます。</p></section>';
+    state.completed = false;
+    state.seenEventIds = new Set();
+    renderMessage("あなた", message, false);
+    statusText.textContent =
+      "要件定義役を立ち上げて、テーマの整理を始めています。";
+
+    const response = await fetch("/api/phase1/sessions", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ topic: message }),
+    });
+
+    if (!response.ok) {
+      state.awaitingResponse = false;
+      updateInputMode();
+      statusText.textContent = "セッションの作成に失敗しました。";
+      return;
+    }
+
+    const payload = await response.json();
+    state.sessionId = payload.sessionId;
+    sessionBadge.dataset.sessionId = payload.sessionId;
+    sessionBadge.textContent = \`Session: \${payload.sessionId}\`;
+    connectEvents();
+    statusText.textContent =
+      "要件定義役がテーマを読み込み、確認ポイントを整理しています。";
+    updateInputMode();
+    return;
+  }
+
+  statusText.textContent =
+    "要件定義役が回答内容を読み込み、要件と不足情報を整理しています。";
 
   const response = await fetch(\`/api/phase1/sessions/\${state.sessionId}/messages\`, {
     method: "POST",
@@ -425,10 +437,13 @@ replyForm.addEventListener("submit", async (event) => {
   });
 
   if (!response.ok) {
+    state.awaitingResponse = false;
+    updateInputMode();
     statusText.textContent = "回答の送信に失敗しました。";
-    setReplyEnabled(true);
   }
 });
+
+updateInputMode();
 `;
 
 const createFallbackAgent = (): RequirementAgent => ({
