@@ -165,6 +165,7 @@ describe("phase2 routes", () => {
     expect(html).toContain('rel="icon"');
     expect(html).toContain('href="/icon.svg"');
     expect(html).toContain('alt="roles ロゴ"');
+    expect(html).toContain("/report/");
   });
 
   test("createApp でも icon.svg を静的配信できる", async () => {

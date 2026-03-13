@@ -5,6 +5,13 @@ import {
 } from "./features/phase2/agents";
 import { registerPhase2Routes } from "./features/phase2/routes";
 import { Phase2Service } from "./features/phase2/service";
+import {
+  createFallbackPhase3Agent,
+  createPhase3AgentFromEnv,
+  type ReportAgent,
+} from "./features/phase3/agent";
+import { registerPhase3Routes } from "./features/phase3/routes";
+import { Phase3Service } from "./features/phase3/service";
 import { registerPhase1Routes } from "./features/phase1/routes";
 import {
   createRequirementAgentFromEnv,
@@ -26,6 +33,7 @@ type CreateAppOptions = {
   facilitatorAgent?: FacilitatorAgent;
   roleAgent?: RoleAgent;
   judgeAgent?: JudgeAgent;
+  reportAgent?: ReportAgent;
   maxUserReplyCount?: number;
   maxTurnsPerPoint?: number;
   maxTotalTurns?: number;
@@ -46,9 +54,13 @@ export const createApp = (options: CreateAppOptions = {}) => {
           judgeAgent: options.judgeAgent,
         }
       : safelyCreatePhase2AgentsFromEnv();
+  const reportAgent = options.reportAgent ?? safelyCreatePhase3AgentFromEnv();
 
   const phase1Service = new Phase1Service(repository, requirementAgent, {
     maxUserReplyCount: options.maxUserReplyCount,
+  });
+  const phase3Service = new Phase3Service(repository, reportAgent, {
+    maxRetryCount: options.maxRetryCount,
   });
   const phase2Service = new Phase2Service(
     repository,
@@ -59,6 +71,24 @@ export const createApp = (options: CreateAppOptions = {}) => {
       maxTurnsPerPoint: options.maxTurnsPerPoint,
       maxTotalTurns: options.maxTotalTurns,
       maxRetryCount: options.maxRetryCount,
+      onCompleted: (sessionId) => {
+        try {
+          phase3Service.start(sessionId);
+        } catch (error) {
+          const message =
+            error instanceof Error ? error.message : "unexpected_error";
+          if (
+            message === "phase3_not_idle" ||
+            message === "phase3_already_running"
+          ) {
+            return;
+          }
+          logger.error("Phase3 auto-start failed", {
+            sessionId,
+            message,
+          });
+        }
+      },
     },
   );
 
@@ -68,6 +98,10 @@ export const createApp = (options: CreateAppOptions = {}) => {
   });
   registerPhase2Routes(app, {
     service: phase2Service,
+    repository,
+  });
+  registerPhase3Routes(app, {
+    service: phase3Service,
     repository,
   });
 
@@ -96,6 +130,17 @@ const safelyCreatePhase2AgentsFromEnv = () => {
       message: error instanceof Error ? error.message : String(error),
     });
     return createFallbackPhase2Agents();
+  }
+};
+
+const safelyCreatePhase3AgentFromEnv = () => {
+  try {
+    return createPhase3AgentFromEnv();
+  } catch (error) {
+    logger.error("Phase3 fallback agent enabled", {
+      message: error instanceof Error ? error.message : String(error),
+    });
+    return createFallbackPhase3Agent();
   }
 };
 

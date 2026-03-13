@@ -3,6 +3,7 @@ import { WorkflowSessionRepository } from "../../shared/workflow-session-reposit
 import type {
   ArenaMessage,
   FacilitatorDecision,
+  Phase2CompletionReason,
   Phase2Error,
   Phase2Step,
   WorkflowSession,
@@ -13,6 +14,10 @@ type Phase2ServiceOptions = {
   maxTurnsPerPoint?: number;
   maxTotalTurns?: number;
   maxRetryCount?: number;
+  onCompleted?: (
+    sessionId: string,
+    reason: Phase2CompletionReason,
+  ) => void | Promise<void>;
 };
 
 const FACILITATOR_ID = "facilitator";
@@ -24,6 +29,7 @@ export class Phase2Service {
   private readonly maxTurnsPerPoint: number;
   private readonly maxTotalTurns: number;
   private readonly maxRetryCount: number;
+  private readonly onCompleted?: Phase2ServiceOptions["onCompleted"];
   private readonly activeSessions = new Set<string>();
 
   constructor(
@@ -36,6 +42,7 @@ export class Phase2Service {
     this.maxTurnsPerPoint = options.maxTurnsPerPoint ?? 6;
     this.maxTotalTurns = options.maxTotalTurns ?? 15;
     this.maxRetryCount = options.maxRetryCount ?? 3;
+    this.onCompleted = options.onCompleted;
   }
 
   getSession(sessionId: string) {
@@ -91,19 +98,19 @@ export class Phase2Service {
           session.phase2.currentDiscussionPointIndex >=
           result.discussionPoints.length
         ) {
-          this.repository.completePhase2(sessionId, "resolved");
+          await this.completePhase2(sessionId, "resolved");
           return;
         }
 
         if (session.phase2.totalTurnCount >= this.maxTotalTurns) {
-          this.finishWithCircuitBreaker(session);
+          await this.finishWithCircuitBreaker(session);
           return;
         }
 
         const currentPoint =
           result.discussionPoints[session.phase2.currentDiscussionPointIndex];
         if (!currentPoint) {
-          this.repository.completePhase2(sessionId, "resolved");
+          await this.completePhase2(sessionId, "resolved");
           return;
         }
 
@@ -113,7 +120,7 @@ export class Phase2Service {
             currentPoint.id,
             "forced_stop",
           );
-          this.finishWithCircuitBreaker(session);
+          await this.finishWithCircuitBreaker(session);
           return;
         }
 
@@ -251,8 +258,16 @@ export class Phase2Service {
     }
   }
 
-  private finishWithCircuitBreaker(session: WorkflowSession) {
-    this.repository.completePhase2(session.id, "circuit_breaker");
+  private async finishWithCircuitBreaker(session: WorkflowSession) {
+    await this.completePhase2(session.id, "circuit_breaker");
+  }
+
+  private async completePhase2(
+    sessionId: string,
+    reason: Phase2CompletionReason,
+  ) {
+    this.repository.completePhase2(sessionId, reason);
+    await this.onCompleted?.(sessionId, reason);
   }
 
   private ensureUnlocked(sessionId: string) {

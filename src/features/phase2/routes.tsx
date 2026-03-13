@@ -99,9 +99,13 @@ const ArenaPage = ({ sessionId }: { sessionId: string }) => (
             再試行
           </button>
 
-          <p class="text-sm text-slate-400">
-            レポート生成は次フェーズで実装予定です。
-          </p>
+          <a
+            id="report-link"
+            href={`/report/${sessionId}`}
+            class="hidden w-full rounded-full border border-cyan-300/40 bg-cyan-300/10 px-5 py-3 text-center text-sm font-semibold text-cyan-100"
+          >
+            レポートを見る
+          </a>
         </aside>
       </div>
     </div>
@@ -112,8 +116,10 @@ const arenaScript = `
 const state = {
   sessionId: document.getElementById("session-id").dataset.sessionId,
   session: null,
-  eventSource: null,
+  phase2EventSource: null,
+  phase3EventSource: null,
   seenEventIds: new Set(),
+  shouldAutoNavigateToReport: false,
 };
 
 const messages = document.getElementById("messages");
@@ -125,6 +131,7 @@ const totalTurnCount = document.getElementById("total-turn-count");
 const judgeResult = document.getElementById("judge-result");
 const pointStatuses = document.getElementById("point-statuses");
 const retryButton = document.getElementById("retry-button");
+const reportLink = document.getElementById("report-link");
 
 const escapeHtml = (value) => String(value)
   .replaceAll("&", "&amp;")
@@ -169,13 +176,25 @@ const renderBanner = () => {
 
   if (state.session.phase2.status === "completed") {
     banner.classList.remove("hidden");
+    if (state.session.phase3.status === "running" || state.session.phase3.status === "idle") {
+      banner.classList.add("border-cyan-300/40", "bg-cyan-300/10", "text-cyan-100");
+      banner.textContent = state.session.phase2.completionReason === "circuit_breaker"
+        ? "議論は終了しました。レポートを生成中です。未解決論点も整理します。"
+        : "議論は終了しました。レポートを生成中です。";
+      return;
+    }
+    if (state.session.phase3.status === "failed") {
+      banner.classList.add("border-rose-400/40", "bg-rose-400/10", "text-rose-100");
+      banner.textContent = state.session.phase3.errorMessage || "レポート生成に失敗しました。";
+      return;
+    }
     if (state.session.phase2.completionReason === "circuit_breaker") {
       banner.classList.add("border-violet-300/40", "bg-violet-300/10", "text-violet-100");
-      banner.textContent = "最大ターン数に達したため未解決論点を残して終了しました。";
+      banner.textContent = "最大ターン数に達したため未解決論点を残して終了しました。レポートを確認できます。";
       return;
     }
     banner.classList.add("border-emerald-400/40", "bg-emerald-400/10", "text-emerald-100");
-    banner.textContent = "全論点の議論が完了しました。";
+    banner.textContent = "全論点の議論が完了しました。レポートを確認できます。";
     return;
   }
 
@@ -199,6 +218,10 @@ const renderDashboard = () => {
     ? \`\${state.session.phase2.lastJudgeDecision.isResolved ? "resolved" : "pending"}\\n\${state.session.phase2.lastJudgeDecision.reason}\`
     : "まだ判定はありません。";
   retryButton.classList.toggle("hidden", state.session.phase2.status !== "failed");
+  reportLink.classList.toggle(
+    "hidden",
+    !(state.session.phase2.status === "completed" && state.session.phase3.status === "completed"),
+  );
 };
 
 const renderStatusText = () => {
@@ -214,7 +237,15 @@ const renderStatusText = () => {
     statusText.textContent = "失敗した論点を再試行できます。";
     return;
   }
-  statusText.textContent = "議論は終了しました。";
+  if (state.session.phase3.status === "running" || state.session.phase3.status === "idle") {
+    statusText.textContent = "議論は終了しました。議事録役がレポートを生成しています。";
+    return;
+  }
+  if (state.session.phase3.status === "failed") {
+    statusText.textContent = "議論は終了しました。レポート生成に失敗しています。";
+    return;
+  }
+  statusText.textContent = "議論は終了しました。レポートを確認できます。";
 };
 
 const render = () => {
@@ -237,12 +268,12 @@ const shouldHandleEvent = (event) => {
   return true;
 };
 
-const connectEvents = () => {
-  if (state.eventSource) {
-    state.eventSource.close();
+const connectPhase2Events = () => {
+  if (state.phase2EventSource) {
+    state.phase2EventSource.close();
   }
-  state.eventSource = new EventSource(\`/api/sessions/\${state.sessionId}/phase2/events\`);
-  state.eventSource.addEventListener("arena_message", (event) => {
+  state.phase2EventSource = new EventSource(\`/api/sessions/\${state.sessionId}/phase2/events\`);
+  state.phase2EventSource.addEventListener("arena_message", (event) => {
     if (!shouldHandleEvent(event)) {
       return;
     }
@@ -250,7 +281,7 @@ const connectEvents = () => {
     state.session.phase2.messages.push(payload.message);
     render();
   });
-  state.eventSource.addEventListener("judge_result", (event) => {
+  state.phase2EventSource.addEventListener("judge_result", (event) => {
     if (!shouldHandleEvent(event)) {
       return;
     }
@@ -268,7 +299,7 @@ const connectEvents = () => {
     state.session.phase2.totalTurnCount += 1;
     render();
   });
-  state.eventSource.addEventListener("phase2_completed", async (event) => {
+  state.phase2EventSource.addEventListener("phase2_completed", async (event) => {
     if (!shouldHandleEvent(event)) {
       return;
     }
@@ -277,8 +308,9 @@ const connectEvents = () => {
     state.session.phase2.completionReason = payload.reason;
     render();
     await hydrate();
+    await ensureReportTracking(true);
   });
-  state.eventSource.addEventListener("error", async (event) => {
+  state.phase2EventSource.addEventListener("error", async (event) => {
     if (!shouldHandleEvent(event)) {
       return;
     }
@@ -291,6 +323,50 @@ const connectEvents = () => {
     };
     render();
     await hydrate();
+  });
+};
+
+const connectPhase3Events = () => {
+  if (state.phase3EventSource || state.session.phase3.status === "completed" || state.session.phase3.status === "failed") {
+    return;
+  }
+  state.phase3EventSource = new EventSource(\`/api/sessions/\${state.sessionId}/phase3/events\`);
+  state.phase3EventSource.addEventListener("phase3_started", (event) => {
+    if (!shouldHandleEvent(event)) {
+      return;
+    }
+    state.session.phase3.status = "running";
+    state.session.phase3.errorMessage = null;
+    render();
+  });
+  state.phase3EventSource.addEventListener("phase3_completed", async (event) => {
+    if (!shouldHandleEvent(event)) {
+      return;
+    }
+    const shouldNavigate = state.shouldAutoNavigateToReport;
+    state.shouldAutoNavigateToReport = false;
+    await hydrate();
+    if (state.phase3EventSource) {
+      state.phase3EventSource.close();
+      state.phase3EventSource = null;
+    }
+    if (shouldNavigate) {
+      window.location.href = \`/report/\${state.sessionId}\`;
+    }
+  });
+  state.phase3EventSource.addEventListener("error", async (event) => {
+    if (!shouldHandleEvent(event)) {
+      return;
+    }
+    const payload = JSON.parse(event.data);
+    state.session.phase3.status = "failed";
+    state.session.phase3.errorMessage = payload.message;
+    render();
+    await hydrate();
+    if (state.phase3EventSource) {
+      state.phase3EventSource.close();
+      state.phase3EventSource = null;
+    }
   });
 };
 
@@ -317,6 +393,32 @@ const startIfNeeded = async () => {
   }
 };
 
+const startReportIfNeeded = async () => {
+  if (state.session.phase2.status !== "completed") {
+    return;
+  }
+  if (state.session.phase3.status !== "idle") {
+    return;
+  }
+  const response = await fetch(\`/api/sessions/\${state.sessionId}/phase3/start\`, {
+    method: "POST",
+  });
+  if (!response.ok) {
+    await hydrate();
+  }
+};
+
+const ensureReportTracking = async (shouldAutoNavigate) => {
+  if (state.session.phase2.status !== "completed") {
+    state.shouldAutoNavigateToReport = false;
+    return;
+  }
+  state.shouldAutoNavigateToReport =
+    shouldAutoNavigate && state.session.phase3.status !== "completed";
+  connectPhase3Events();
+  await startReportIfNeeded();
+};
+
 retryButton.addEventListener("click", async () => {
   retryButton.disabled = true;
   const response = await fetch(\`/api/sessions/\${state.sessionId}/phase2/retry\`, {
@@ -334,8 +436,10 @@ const boot = async () => {
   if (!hydrated) {
     return;
   }
-  connectEvents();
+  connectPhase2Events();
   await startIfNeeded();
+  await hydrate();
+  await ensureReportTracking(state.session.phase3.status !== "completed");
 };
 
 boot();

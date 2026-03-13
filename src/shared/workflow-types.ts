@@ -102,10 +102,23 @@ export type Phase2State = {
   totalTurnCount: number;
   messages: ArenaMessage[];
   pointStatuses: PointStatus[];
+  judgeDecisions: JudgeDecisionRecord[];
   lastJudgeDecision: JudgeDecisionRecord | null;
   completionReason: Phase2CompletionReason | null;
   isProcessing: boolean;
   error: Phase2Error | null;
+};
+
+export type Phase3Status = "idle" | "running" | "completed" | "failed";
+
+export type Phase3CompletionReason = "generated" | "failed";
+
+export type Phase3State = {
+  status: Phase3Status;
+  reportMarkdown: string | null;
+  completionReason: Phase3CompletionReason | null;
+  isProcessing: boolean;
+  errorMessage: string | null;
 };
 
 export type WorkflowSession = {
@@ -113,6 +126,7 @@ export type WorkflowSession = {
   topic: string;
   phase1: Phase1State;
   phase2: Phase2State;
+  phase3: Phase3State;
   createdAt: string;
   updatedAt: string;
 };
@@ -199,7 +213,31 @@ export type Phase2SseEvent =
       };
     };
 
-export type WorkflowSseEvent = Phase1SseEvent | Phase2SseEvent;
+export type Phase3SseEvent =
+  | {
+      id: number;
+      event: "phase3_started";
+      data: {
+        sessionId: string;
+      };
+    }
+  | {
+      id: number;
+      event: "phase3_completed";
+      data: {
+        sessionId: string;
+      };
+    }
+  | {
+      id: number;
+      event: "error";
+      data: {
+        sessionId: string;
+        message: string;
+      };
+    };
+
+export type WorkflowSseEvent = Phase1SseEvent | Phase2SseEvent | Phase3SseEvent;
 
 export const createInitialPhase2State = (): Phase2State => ({
   status: "idle",
@@ -208,8 +246,17 @@ export const createInitialPhase2State = (): Phase2State => ({
   totalTurnCount: 0,
   messages: [],
   pointStatuses: [],
+  judgeDecisions: [],
   lastJudgeDecision: null,
   completionReason: null,
   isProcessing: false,
   error: null,
+});
+
+export const createInitialPhase3State = (): Phase3State => ({
+  status: "idle",
+  reportMarkdown: null,
+  completionReason: null,
+  isProcessing: false,
+  errorMessage: null,
 });

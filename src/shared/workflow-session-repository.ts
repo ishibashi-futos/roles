@@ -6,6 +6,7 @@ import type {
   ArenaMessage,
   JudgeDecisionRecord,
   Phase1Result,
+  Phase3CompletionReason,
   Phase2CompletionReason,
   Phase2Error,
   PointStatus,
@@ -13,7 +14,10 @@ import type {
   WorkflowSession,
   WorkflowSseEvent,
 } from "./workflow-types";
-import { createInitialPhase2State } from "./workflow-types";
+import {
+  createInitialPhase2State,
+  createInitialPhase3State,
+} from "./workflow-types";
 
 type SessionRow = {
   id: string;
@@ -30,10 +34,16 @@ type SessionRow = {
   phase2_total_turn_count: number;
   phase2_messages: string;
   phase2_point_statuses: string;
+  phase2_judge_decisions: string;
   phase2_last_judge_decision: string | null;
   phase2_completion_reason: string | null;
   phase2_is_processing: number;
   phase2_error: string | null;
+  phase3_status: string;
+  phase3_report_markdown: string | null;
+  phase3_completion_reason: string | null;
+  phase3_is_processing: number;
+  phase3_error_message: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -84,6 +94,10 @@ const mapSession = (row: SessionRow): WorkflowSession => ({
     totalTurnCount: row.phase2_total_turn_count,
     messages: parseJson<ArenaMessage[]>(row.phase2_messages, []),
     pointStatuses: parseJson<PointStatus[]>(row.phase2_point_statuses, []),
+    judgeDecisions: parseJson<JudgeDecisionRecord[]>(
+      row.phase2_judge_decisions,
+      [],
+    ),
     lastJudgeDecision: parseJson<JudgeDecisionRecord | null>(
       row.phase2_last_judge_decision,
       null,
@@ -92,6 +106,15 @@ const mapSession = (row: SessionRow): WorkflowSession => ({
       row.phase2_completion_reason as WorkflowSession["phase2"]["completionReason"],
     isProcessing: Boolean(row.phase2_is_processing),
     error: parseJson<Phase2Error | null>(row.phase2_error, null),
+  },
+  phase3: {
+    ...createInitialPhase3State(),
+    status: row.phase3_status as WorkflowSession["phase3"]["status"],
+    reportMarkdown: row.phase3_report_markdown,
+    completionReason:
+      row.phase3_completion_reason as WorkflowSession["phase3"]["completionReason"],
+    isProcessing: Boolean(row.phase3_is_processing),
+    errorMessage: row.phase3_error_message,
   },
   createdAt: row.created_at,
   updatedAt: row.updated_at,
@@ -129,14 +152,21 @@ export class WorkflowSessionRepository {
         phase2_total_turn_count INTEGER NOT NULL,
         phase2_messages TEXT NOT NULL,
         phase2_point_statuses TEXT NOT NULL,
+        phase2_judge_decisions TEXT NOT NULL DEFAULT '[]',
         phase2_last_judge_decision TEXT,
         phase2_completion_reason TEXT,
         phase2_is_processing INTEGER NOT NULL,
         phase2_error TEXT,
+        phase3_status TEXT NOT NULL DEFAULT 'idle',
+        phase3_report_markdown TEXT,
+        phase3_completion_reason TEXT,
+        phase3_is_processing INTEGER NOT NULL DEFAULT 0,
+        phase3_error_message TEXT,
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL
       );
     `);
+    this.ensureSessionColumns();
     this.database.exec(`
       CREATE TABLE IF NOT EXISTS session_events (
         session_id TEXT NOT NULL,
@@ -162,6 +192,7 @@ export class WorkflowSessionRepository {
         errorMessage: null,
       },
       phase2: createInitialPhase2State(),
+      phase3: createInitialPhase3State(),
       createdAt: timestamp,
       updatedAt: timestamp,
     };
@@ -173,9 +204,11 @@ export class WorkflowSessionRepository {
           phase1_user_reply_count, phase1_is_processing, phase1_error_message,
           phase2_status, phase2_current_discussion_point_index, phase2_current_turn_count,
           phase2_total_turn_count, phase2_messages, phase2_point_statuses,
-          phase2_last_judge_decision, phase2_completion_reason, phase2_is_processing,
-          phase2_error, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          phase2_judge_decisions, phase2_last_judge_decision, phase2_completion_reason,
+          phase2_is_processing, phase2_error, phase3_status, phase3_report_markdown,
+          phase3_completion_reason, phase3_is_processing, phase3_error_message,
+          created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         session.id,
@@ -192,10 +225,16 @@ export class WorkflowSessionRepository {
         session.phase2.totalTurnCount,
         serialize(session.phase2.messages),
         serialize(session.phase2.pointStatuses),
+        serialize(session.phase2.judgeDecisions),
         null,
         session.phase2.completionReason,
         Number(session.phase2.isProcessing),
         null,
+        session.phase3.status,
+        session.phase3.reportMarkdown,
+        session.phase3.completionReason,
+        Number(session.phase3.isProcessing),
+        session.phase3.errorMessage,
         session.createdAt,
         session.updatedAt,
       );
@@ -346,6 +385,7 @@ export class WorkflowSessionRepository {
 
   recordJudgeDecision(sessionId: string, result: JudgeDecisionRecord) {
     const session = this.requireSession(sessionId);
+    session.phase2.judgeDecisions.push(result);
     session.phase2.lastJudgeDecision = result;
     this.saveSession(session);
     this.pushEvent(sessionId, {
@@ -437,6 +477,89 @@ export class WorkflowSessionRepository {
     return session;
   }
 
+  markPhase3Started(sessionId: string) {
+    const session = this.requireSession(sessionId);
+    session.phase3.status = "running";
+    session.phase3.reportMarkdown = null;
+    session.phase3.completionReason = null;
+    session.phase3.isProcessing = true;
+    session.phase3.errorMessage = null;
+    this.saveSession(session);
+    this.pushEvent(sessionId, {
+      id: 0,
+      event: "phase3_started",
+      data: {
+        sessionId,
+      },
+    });
+    return session;
+  }
+
+  completePhase3(
+    sessionId: string,
+    reportMarkdown: string,
+    reason: Phase3CompletionReason,
+  ) {
+    const session = this.requireSession(sessionId);
+    session.phase3.status = "completed";
+    session.phase3.reportMarkdown = reportMarkdown;
+    session.phase3.completionReason = reason;
+    session.phase3.isProcessing = false;
+    session.phase3.errorMessage = null;
+    this.saveSession(session);
+    this.pushEvent(sessionId, {
+      id: 0,
+      event: "phase3_completed",
+      data: {
+        sessionId,
+      },
+    });
+    return session;
+  }
+
+  failPhase3(sessionId: string, message: string) {
+    const session = this.requireSession(sessionId);
+    session.phase3.status = "failed";
+    session.phase3.completionReason = "failed";
+    session.phase3.isProcessing = false;
+    session.phase3.errorMessage = message;
+    this.saveSession(session);
+    this.pushEvent(sessionId, {
+      id: 0,
+      event: "error",
+      data: {
+        sessionId,
+        message,
+      },
+    });
+    return session;
+  }
+
+  setPhase3Processing(sessionId: string, isProcessing: boolean) {
+    const session = this.requireSession(sessionId);
+    session.phase3.isProcessing = isProcessing;
+    this.saveSession(session);
+    return session;
+  }
+
+  resetPhase3ForRetry(sessionId: string) {
+    const session = this.requireSession(sessionId);
+    session.phase3.status = "running";
+    session.phase3.reportMarkdown = null;
+    session.phase3.completionReason = null;
+    session.phase3.isProcessing = true;
+    session.phase3.errorMessage = null;
+    this.saveSession(session);
+    this.pushEvent(sessionId, {
+      id: 0,
+      event: "phase3_started",
+      data: {
+        sessionId,
+      },
+    });
+    return session;
+  }
+
   resetCurrentPointForRetry(sessionId: string) {
     const session = this.requireSession(sessionId);
     const result = session.phase1.result;
@@ -452,6 +575,9 @@ export class WorkflowSessionRepository {
 
     session.phase2.messages = session.phase2.messages.filter(
       (message) => message.discussionPointId !== point.id,
+    );
+    session.phase2.judgeDecisions = session.phase2.judgeDecisions.filter(
+      (decision) => decision.discussionPointId !== point.id,
     );
     session.phase2.currentTurnCount = 0;
     session.phase2.lastJudgeDecision =
@@ -541,10 +667,16 @@ export class WorkflowSessionRepository {
           phase2_total_turn_count = ?,
           phase2_messages = ?,
           phase2_point_statuses = ?,
+          phase2_judge_decisions = ?,
           phase2_last_judge_decision = ?,
           phase2_completion_reason = ?,
           phase2_is_processing = ?,
           phase2_error = ?,
+          phase3_status = ?,
+          phase3_report_markdown = ?,
+          phase3_completion_reason = ?,
+          phase3_is_processing = ?,
+          phase3_error_message = ?,
           updated_at = ?
         WHERE id = ?`,
       )
@@ -562,15 +694,62 @@ export class WorkflowSessionRepository {
         session.phase2.totalTurnCount,
         serialize(session.phase2.messages),
         serialize(session.phase2.pointStatuses),
+        serialize(session.phase2.judgeDecisions),
         session.phase2.lastJudgeDecision
           ? serialize(session.phase2.lastJudgeDecision)
           : null,
         session.phase2.completionReason,
         Number(session.phase2.isProcessing),
         session.phase2.error ? serialize(session.phase2.error) : null,
+        session.phase3.status,
+        session.phase3.reportMarkdown,
+        session.phase3.completionReason,
+        Number(session.phase3.isProcessing),
+        session.phase3.errorMessage,
         session.updatedAt,
         session.id,
       );
+  }
+
+  private ensureSessionColumns() {
+    const rows = this.database
+      .query(`PRAGMA table_info(sessions)`)
+      .all() as Array<{ name: string }>;
+    const columns = new Set(rows.map((row) => row.name));
+
+    const missingColumns = [
+      {
+        name: "phase2_judge_decisions",
+        sql: "ALTER TABLE sessions ADD COLUMN phase2_judge_decisions TEXT NOT NULL DEFAULT '[]'",
+      },
+      {
+        name: "phase3_status",
+        sql: "ALTER TABLE sessions ADD COLUMN phase3_status TEXT NOT NULL DEFAULT 'idle'",
+      },
+      {
+        name: "phase3_report_markdown",
+        sql: "ALTER TABLE sessions ADD COLUMN phase3_report_markdown TEXT",
+      },
+      {
+        name: "phase3_completion_reason",
+        sql: "ALTER TABLE sessions ADD COLUMN phase3_completion_reason TEXT",
+      },
+      {
+        name: "phase3_is_processing",
+        sql: "ALTER TABLE sessions ADD COLUMN phase3_is_processing INTEGER NOT NULL DEFAULT 0",
+      },
+      {
+        name: "phase3_error_message",
+        sql: "ALTER TABLE sessions ADD COLUMN phase3_error_message TEXT",
+      },
+    ];
+
+    for (const column of missingColumns) {
+      if (columns.has(column.name)) {
+        continue;
+      }
+      this.database.exec(column.sql);
+    }
   }
 
   private pushEvent(sessionId: string, event: WorkflowSseEvent) {
