@@ -81,7 +81,7 @@ const safelyCreateRequirementAgentFromEnv = () => {
     return {
       async decide() {
         throw new Error(
-          "OPENAI_BASE_URL / OPENAI_API_KEY / OPENAI_MODEL を設定してください。",
+          "Set OPENAI_BASE_URL, OPENAI_API_KEY, and OPENAI_MODEL.",
         );
       },
     } satisfies RequirementAgent;

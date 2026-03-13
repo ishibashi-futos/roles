@@ -1,0 +1,14 @@
+Digitize SIer top sales habits with zero manual CRM input. Need a strategy to overcome resistance from old-school middle managers.
+
+---
+The ultimate goal is to create an environment (Agentic Workflow) where all sales members can naturally replicate the "deep customer understanding (tacit knowledge)" and "diligence in keeping promises" possessed by some top salespeople, through the system.
+The core of this strategy is "zero input (complete elimination of manual data entry)." Instead of the Lagging Indicators (result data) found in current CRMs, we will acquire Leading Indicators (process data) by having AI automatically collect and analyze Zoom and Teams web conference audio, Outlook email history, and Slack chat history. From this, we aim to create a platform that functions as an "exobrain" for sales representatives, automatically extracting "sales negotiation summaries," "true customer insights," and "next best actions."
+
+[Regarding resistance from middle management and the details of what needs to be addressed]
+The biggest blocker is the playing manager layer (section chief and department head level) who themselves rose to top sales positions through "perseverance and personal diligence." The anticipated resistance and challenges from them are the following three points: Clinging to past successes and distrust of AI: Managers resist, believing their intuition and experience are more reliable than AI's black-box insights, and ignoring the system, forcing subordinates to rely on verbal reports or create their own Excel spreadsheets (leading to duplicate management and increased workload).
+
+Craving micromanagement: Even as AI ensures "quality," managers cling to outdated methods of "managing activity volume," such as "How many visits did you make today?" or "Is the daily report short enough?"
+
+Aversion to and exhaustion of becoming "data entry police": The introduction of a system leads to a misunderstanding that managers will be tasked with monitoring and reminding subordinates to correctly input data, resulting in rejection of the new tool altogether.
+
+In response to this resistance, a shift in perception (change management) is necessary: ​​AI is not a tool for monitoring subordinates' actions, but rather a dashboard for managers to provide accurate, fact-based coaching (such as project health scores and early detection of loss risks).

@@ -67,20 +67,12 @@ Rules:
 - discussionPoints must contain at least 2 items
 - successCriteria, constraints, assumptions, responsibilities, and concerns must never be empty arrays`;
 
-const buildForcedCompletionInstruction = (
-  outputLanguage: OutputLanguage,
+export const buildRequirementAgentInstruction = (
   shouldForceComplete: boolean,
-) => {
-  if (outputLanguage === "ja") {
-    return shouldForceComplete
-      ? "今回が最終確認です。追加質問は禁止し、必ず kind=complete を返してください。"
-      : "必要なら kind=ask を返してください。";
-  }
-
-  return shouldForceComplete
+) =>
+  shouldForceComplete
     ? 'This is the final confirmation. Do not ask follow-up questions and always return kind="complete".'
     : 'Return kind="ask" if more information is required.';
-};
 
 const REQUIREMENT_AGENT_RESPONSE_SCHEMA = {
   type: "object",
@@ -206,8 +198,7 @@ export class OpenAiRequirementAgent implements RequirementAgent {
     maxUserReplyCount: number;
   }) {
     const outputLanguage = getOutputLanguageFromEnv();
-    const forcedCompletionInstruction = buildForcedCompletionInstruction(
-      outputLanguage,
+    const forcedCompletionInstruction = buildRequirementAgentInstruction(
       input.userReplyCount >= input.maxUserReplyCount,
     );
 
@@ -256,9 +247,7 @@ export const createRequirementAgentFromEnv = () => {
       hasApiKey: Boolean(apiKey),
       hasModel: Boolean(model),
     });
-    throw new Error(
-      "OPENAI_BASE_URL / OPENAI_API_KEY / OPENAI_MODEL を設定してください。",
-    );
+    throw new Error("Set OPENAI_BASE_URL, OPENAI_API_KEY, and OPENAI_MODEL.");
   }
 
   logger.info("LLM requirement agent configured", {
@@ -277,7 +266,7 @@ export const parseRequirementAgentDecision = (content: string) => {
   try {
     parsed = JSON.parse(content) as RequirementAgentResponse;
   } catch {
-    throw new Error("要件定義役の JSON を解釈できませんでした。");
+    throw new Error("Failed to parse requirement agent JSON.");
   }
 
   if (parsed.kind === "ask" && typeof parsed.message === "string") {
@@ -310,7 +299,7 @@ export const parseRequirementAgentDecision = (content: string) => {
     } satisfies RequirementAgentDecision;
   }
 
-  throw new Error("要件定義役の JSON 形式が不正です。");
+  throw new Error("Requirement agent JSON format is invalid.");
 };
 
 const isNonEmptyStringArray = (value: unknown): value is string[] =>

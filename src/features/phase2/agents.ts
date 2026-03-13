@@ -48,6 +48,7 @@ export const buildRoleSystemPrompt = (
   outputLanguage: OutputLanguage,
 ) => `You are a discussion participant for roles.
 You must speak in ${describeOutputLanguage(outputLanguage)} and maintain the assigned role perspective consistently.
+Use the role definition from the user message as the only source of truth.
 Return plain text only.
 Keep the response concise and specific to the current discussion point.`;
 
@@ -69,9 +70,7 @@ const createClientFromEnv = () => {
       hasApiKey: Boolean(apiKey),
       hasModel: Boolean(model),
     });
-    throw new Error(
-      "OPENAI_BASE_URL / OPENAI_API_KEY / OPENAI_MODEL を設定してください。",
-    );
+    throw new Error("Set OPENAI_BASE_URL, OPENAI_API_KEY, and OPENAI_MODEL.");
   }
 
   return new OpenAiCompatibleClient(baseUrl, apiKey, model);
@@ -158,7 +157,7 @@ export class OpenAiRoleAgent implements RoleAgent {
     const content = await this.client.createTextChatCompletion([
       {
         role: "system",
-        content: `${buildRoleSystemPrompt(outputLanguage)}\nRole name: ${input.role.name}\nPerspective: ${input.role.perspective}\nSystem prompt seed: ${input.role.systemPromptSeed}`,
+        content: buildRoleSystemPrompt(outputLanguage),
       },
       {
         role: "user",
@@ -168,7 +167,7 @@ export class OpenAiRoleAgent implements RoleAgent {
 
     const message = content.trim();
     if (!message) {
-      throw new Error("ロール発言が空です。");
+      throw new Error("Role response is empty.");
     }
 
     return message;
@@ -222,23 +221,17 @@ export const createPhase2AgentsFromEnv = () => {
 export const createFallbackPhase2Agents = () => ({
   facilitatorAgent: {
     async decide() {
-      throw new Error(
-        "OPENAI_BASE_URL / OPENAI_API_KEY / OPENAI_MODEL を設定してください。",
-      );
+      throw new Error("Set OPENAI_BASE_URL, OPENAI_API_KEY, and OPENAI_MODEL.");
     },
   } satisfies FacilitatorAgent,
   roleAgent: {
     async speak() {
-      throw new Error(
-        "OPENAI_BASE_URL / OPENAI_API_KEY / OPENAI_MODEL を設定してください。",
-      );
+      throw new Error("Set OPENAI_BASE_URL, OPENAI_API_KEY, and OPENAI_MODEL.");
     },
   } satisfies RoleAgent,
   judgeAgent: {
     async decide() {
-      throw new Error(
-        "OPENAI_BASE_URL / OPENAI_API_KEY / OPENAI_MODEL を設定してください。",
-      );
+      throw new Error("Set OPENAI_BASE_URL, OPENAI_API_KEY, and OPENAI_MODEL.");
     },
   } satisfies JudgeAgent,
 });
@@ -247,7 +240,7 @@ const parseJson = (content: string, step: Phase2Step) => {
   try {
     return JSON.parse(content) as Record<string, unknown>;
   } catch {
-    throw new Error(`${step} の JSON を解釈できませんでした。`);
+    throw new Error(`Failed to parse ${step} JSON.`);
   }
 };
 
@@ -262,7 +255,7 @@ export const parseFacilitatorDecision = (content: string) => {
     typeof parsed.message !== "string" ||
     parsed.message.length === 0
   ) {
-    throw new Error("facilitator の JSON 形式が不正です。");
+    throw new Error("Facilitator JSON format is invalid.");
   }
 
   return parsed as FacilitatorDecision;
@@ -276,7 +269,7 @@ export const parseJudgeDecision = (content: string) => {
     typeof parsed.reason !== "string" ||
     parsed.reason.length === 0
   ) {
-    throw new Error("judge の JSON 形式が不正です。");
+    throw new Error("Judge JSON format is invalid.");
   }
 
   return parsed as JudgeDecision;

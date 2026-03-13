@@ -501,7 +501,7 @@ export const registerPhase1Routes = (
       logger.error("Phase1 session creation rejected", {
         reason: "topic_missing",
       });
-      return c.json({ message: "topic は必須です。" }, 400);
+      return c.json({ message: "topic is required." }, 400);
     }
 
     const session = service.createSession(topic);
@@ -521,7 +521,7 @@ export const registerPhase1Routes = (
         sessionId,
         reason: "message_missing",
       });
-      return c.json({ message: "message は必須です。" }, 400);
+      return c.json({ message: "message is required." }, 400);
     }
 
     try {
@@ -538,21 +538,18 @@ export const registerPhase1Routes = (
         message: messageText,
       });
       if (messageText === "session_not_found") {
-        return c.json({ message: "session が見つかりません。" }, 404);
+        return c.json({ message: "session not found." }, 404);
       }
       if (messageText === "session_not_collecting") {
         return c.json(
-          { message: "この session は回答を受け付けていません。" },
+          { message: "this session is not accepting replies." },
           409,
         );
       }
       if (messageText === "session_processing") {
-        return c.json(
-          { message: "処理中のため、しばらく待ってください。" },
-          409,
-        );
+        return c.json({ message: "session is processing. please wait." }, 409);
       }
-      return c.json({ message: "回答の処理に失敗しました。" }, 500);
+      return c.json({ message: "failed to process reply." }, 500);
     }
   });
 
@@ -565,7 +562,7 @@ export const registerPhase1Routes = (
         sessionId,
         reason: "session_not_found",
       });
-      return c.json({ message: "session が見つかりません。" }, 404);
+      return c.json({ message: "session not found." }, 404);
     }
 
     logger.info("Phase1 SSE connection opened", {

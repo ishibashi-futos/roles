@@ -126,7 +126,11 @@ describe("phase2 output language prompts", () => {
   });
 
   test("ロールを en に切り替えられる", () => {
-    expect(buildRoleSystemPrompt("en")).toContain("speak in English");
+    const prompt = buildRoleSystemPrompt("en");
+
+    expect(prompt).toContain("speak in English");
+    expect(prompt).toContain("Use the role definition from the user message");
+    expect(prompt).not.toContain("Role name:");
   });
 
   test("judge を en に切り替えられる", () => {

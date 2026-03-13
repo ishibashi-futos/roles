@@ -308,7 +308,7 @@ export class Phase2Service {
 
     const finalError: Phase2Error = {
       step,
-      message: `${step} の処理が ${this.maxRetryCount} 回失敗しました: ${lastError?.message ?? "unknown_error"}`,
+      message: `${step} failed ${this.maxRetryCount} times: ${lastError?.message ?? "unknown_error"}`,
       retryCount: this.maxRetryCount,
     };
     throw new Phase2StepError(finalError);

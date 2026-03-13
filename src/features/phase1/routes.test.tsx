@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { createPhase1App } from "./routes";
 import type { RequirementAgent } from "./requirement-agent";
 import {
+  buildRequirementAgentInstruction,
   buildRequirementAgentSystemPrompt,
   parseRequirementAgentDecision,
 } from "./requirement-agent";
@@ -76,7 +77,7 @@ describe("parseRequirementAgentDecision", () => {
 
   test("不正な JSON は失敗する", () => {
     expect(() => parseRequirementAgentDecision("{invalid")).toThrow(
-      "要件定義役の JSON を解釈できませんでした。",
+      "Failed to parse requirement agent JSON.",
     );
   });
 });
@@ -90,6 +91,15 @@ describe("output language", () => {
     const prompt = buildRequirementAgentSystemPrompt("en");
 
     expect(prompt).toContain("Interact with the user in English");
+  });
+
+  test("要件定義役の補助指示は常に英語を使う", () => {
+    expect(buildRequirementAgentInstruction(true)).toContain(
+      'always return kind="complete"',
+    );
+    expect(buildRequirementAgentInstruction(false)).toContain(
+      'Return kind="ask"',
+    );
   });
 });
 
@@ -214,7 +224,7 @@ describe("phase1 routes", () => {
   test("エージェント失敗時は error イベントを返す", async () => {
     const agent: RequirementAgent = {
       async decide() {
-        throw new Error("LLM 接続に失敗しました。");
+        throw new Error("LLM request failed.");
       },
     };
 
@@ -241,6 +251,6 @@ describe("phase1 routes", () => {
     const text = await eventsResponse.text();
 
     expect(text).toContain("error");
-    expect(text).toContain("LLM 接続に失敗しました。");
+    expect(text).toContain("LLM request failed.");
   });
 });

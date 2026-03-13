@@ -100,7 +100,7 @@ export class OpenAiCompatibleClient {
         bodyPreview: responseText.slice(0, 500),
         error: error instanceof Error ? error.message : String(error),
       });
-      throw new Error("LLM のレスポンス JSON を解釈できませんでした。");
+      throw new Error("Failed to parse LLM response JSON.");
     }
 
     if (!response.ok) {
@@ -121,7 +121,7 @@ export class OpenAiCompatibleClient {
         model: this.model,
         status: response.status,
       });
-      throw new Error("LLM の応答本文が空です。");
+      throw new Error("LLM response content is empty.");
     }
 
     logger.info("LLM request completed", {
@@ -148,5 +148,5 @@ const extractErrorMessage = (error: OpenAiChatCompletionResponse["error"]) => {
     return error.message;
   }
 
-  return "LLM 呼び出しに失敗しました。";
+  return "LLM request failed.";
 };

@@ -7,7 +7,8 @@
     "format": "biome format --write .",
     "typecheck": "tsc --noEmit ",
     "sanity": "bun run format && bun run typecheck && bun test",
-    "dev": "bun run --watch src/server.ts"
+    "dev": "bun run --watch src/server.ts",
+    "dev:en": "ROLES_OUTPUT_LANGUAGE='en' bun run --watch src/server.ts"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.4.6",

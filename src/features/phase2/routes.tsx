@@ -368,7 +368,7 @@ export const registerPhase2Routes = (
     const session = service.getSession(sessionId);
 
     if (!session) {
-      return c.json({ message: "session が見つかりません。" }, 404);
+      return c.json({ message: "session not found." }, 404);
     }
 
     return c.json(session);
@@ -388,11 +388,11 @@ export const registerPhase2Routes = (
         message,
       });
       if (message === "session_not_found") {
-        return c.json({ message: "session が見つかりません。" }, 404);
+        return c.json({ message: "session not found." }, 404);
       }
       if (message === "session_phase1_not_completed") {
         return c.json(
-          { message: "Phase 1 が完了した session のみ開始できます。" },
+          { message: "only sessions with completed phase 1 can start." },
           409,
         );
       }
@@ -400,9 +400,9 @@ export const registerPhase2Routes = (
         message === "phase2_not_idle" ||
         message === "phase2_already_running"
       ) {
-        return c.json({ message: "この session は開始できません。" }, 409);
+        return c.json({ message: "this session cannot be started." }, 409);
       }
-      return c.json({ message: "Phase 2 の開始に失敗しました。" }, 500);
+      return c.json({ message: "failed to start phase 2." }, 500);
     }
   });
 
@@ -420,15 +420,15 @@ export const registerPhase2Routes = (
         message,
       });
       if (message === "session_not_found") {
-        return c.json({ message: "session が見つかりません。" }, 404);
+        return c.json({ message: "session not found." }, 404);
       }
       if (
         message === "phase2_not_failed" ||
         message === "phase2_already_running"
       ) {
-        return c.json({ message: "この session は再試行できません。" }, 409);
+        return c.json({ message: "this session cannot be retried." }, 409);
       }
-      return c.json({ message: "再試行の開始に失敗しました。" }, 500);
+      return c.json({ message: "failed to start retry." }, 500);
     }
   });
 
@@ -437,7 +437,7 @@ export const registerPhase2Routes = (
     const session = service.getSession(sessionId);
 
     if (!session) {
-      return c.json({ message: "session が見つかりません。" }, 404);
+      return c.json({ message: "session not found." }, 404);
     }
 
     return streamSSE(c, async (stream) => {

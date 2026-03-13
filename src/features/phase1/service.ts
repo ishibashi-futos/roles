@@ -104,9 +104,7 @@ export class Phase1Service {
       });
     } catch (error) {
       const message =
-        error instanceof Error
-          ? error.message
-          : "要件定義の処理に失敗しました。";
+        error instanceof Error ? error.message : "Phase1 processing failed.";
       logger.error("Phase1 processing failed", {
         sessionId,
         message,
