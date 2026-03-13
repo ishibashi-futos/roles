@@ -78,6 +78,32 @@ describe("parseRequirementAgentDecision", () => {
 });
 
 describe("phase1 routes", () => {
+  test("トップページで favicon と UI ロゴを参照する", async () => {
+    const app = createPhase1App({
+      repository: createTestRepository(),
+    });
+
+    const response = await app.request("/");
+
+    expect(response.status).toBe(200);
+    const html = await response.text();
+    expect(html).toContain('rel="icon"');
+    expect(html).toContain('href="/icon.svg"');
+    expect(html).toContain('alt="roles ロゴ"');
+  });
+
+  test("icon.svg を静的配信できる", async () => {
+    const app = createPhase1App({
+      repository: createTestRepository(),
+    });
+
+    const response = await app.request("/icon.svg");
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-type")).toContain("image/svg+xml");
+    expect(await response.text()).toContain("<svg");
+  });
+
   test("テーマ送信でセッションを作成できる", async () => {
     const agent: RequirementAgent = {
       async decide() {

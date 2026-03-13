@@ -2,7 +2,9 @@ import { Hono } from "hono";
 import { streamSSE } from "hono/streaming";
 import type { Child } from "hono/jsx";
 import { jsxRenderer } from "hono/jsx-renderer";
+import { BrandMark, PageShell } from "../../shared/branding";
 import { logger } from "../../shared/logger";
+import { registerStaticAssetRoutes } from "../../shared/static-assets";
 import { WorkflowSessionRepository } from "../../shared/workflow-session-repository";
 import type { WorkflowSession } from "../../shared/workflow-types";
 import type { RequirementAgent } from "./requirement-agent";
@@ -27,8 +29,8 @@ const renderMessages = (messages: RequirementMessage[]) =>
       id={`message-${index}`}
       class={`rounded-2xl border px-4 py-3 ${
         message.role === "assistant"
-          ? "border-slate-300 bg-white"
-          : "border-emerald-300 bg-emerald-50"
+          ? "border-sky-200/80 bg-white/95 shadow-sm shadow-sky-950/5"
+          : "border-emerald-300/80 bg-emerald-50/95 shadow-sm shadow-emerald-950/5"
       }`}
     >
       <p class="text-xs font-semibold uppercase tracking-[0.24em] text-slate-500">
@@ -45,7 +47,9 @@ const KeyValueList = ({ title, items }: { title: string; items: string[] }) => (
     <p class="text-sm font-semibold text-slate-900">{title}</p>
     <ul class="mt-2 space-y-2 text-sm leading-6 text-slate-600">
       {items.map((item) => (
-        <li class="rounded-xl bg-white/80 px-3 py-2">{item}</li>
+        <li class="rounded-xl border border-slate-200/80 bg-white/90 px-3 py-2 shadow-sm shadow-slate-950/5">
+          {item}
+        </li>
       ))}
     </ul>
   </section>
@@ -55,7 +59,7 @@ const renderDiscussionStartButton = (sessionId: string) => (
   <div class="mt-6 flex justify-end">
     <a
       href={`/arena/${sessionId}`}
-      class="rounded-full bg-slate-950 px-5 py-3 text-sm font-semibold text-white transition hover:bg-slate-800"
+      class="rounded-full bg-[linear-gradient(135deg,var(--color-blue),var(--color-green))] px-5 py-3 text-sm font-semibold text-slate-950 transition hover:opacity-90"
     >
       議論を開始
     </a>
@@ -68,7 +72,7 @@ const renderResult = (
 ): Child => {
   if (!result) {
     return (
-      <section class="rounded-3xl border border-dashed border-slate-300 bg-white/70 p-6">
+      <section class="rounded-[28px] border border-dashed border-slate-300/80 bg-white/75 p-6 shadow-lg shadow-slate-950/5 backdrop-blur">
         <p class="text-sm text-slate-500">
           ここに要件定義、論点、ロール定義が表示されます。
         </p>
@@ -78,8 +82,8 @@ const renderResult = (
 
   return (
     <section class="space-y-6">
-      <article class="rounded-3xl bg-slate-950 p-6 text-white">
-        <p class="text-xs font-semibold uppercase tracking-[0.3em] text-amber-300">
+      <article class="rounded-[28px] border border-white/10 bg-[linear-gradient(160deg,#081120_0%,#10213f_55%,#102c38_100%)] p-6 text-white shadow-2xl shadow-sky-950/20">
+        <p class="text-xs font-semibold uppercase tracking-[0.3em] text-cyan-200">
           Requirement Definition
         </p>
         <h2 class="mt-3 text-2xl font-semibold">{result.requirements.theme}</h2>
@@ -96,13 +100,13 @@ const renderResult = (
         </div>
       </article>
 
-      <article class="rounded-3xl border border-slate-200 bg-white p-6">
-        <p class="text-xs font-semibold uppercase tracking-[0.3em] text-slate-500">
+      <article class="rounded-[28px] border border-sky-100 bg-white/90 p-6 shadow-xl shadow-sky-950/5 backdrop-blur">
+        <p class="text-xs font-semibold uppercase tracking-[0.3em] text-sky-700">
           Discussion Points
         </p>
         <div class="mt-4 grid gap-4">
           {result.discussionPoints.map((point) => (
-            <section class="rounded-2xl bg-slate-50 p-4">
+            <section class="rounded-2xl border border-sky-100 bg-[linear-gradient(180deg,#ffffff_0%,#eff6ff_100%)] p-4">
               <h3 class="font-semibold text-slate-900">{point.title}</h3>
               <p class="mt-2 text-sm leading-6 text-slate-600">
                 {point.description}
@@ -112,14 +116,14 @@ const renderResult = (
         </div>
       </article>
 
-      <article class="rounded-3xl border border-slate-200 bg-white p-6">
-        <p class="text-xs font-semibold uppercase tracking-[0.3em] text-slate-500">
+      <article class="rounded-[28px] border border-violet-100 bg-white/90 p-6 shadow-xl shadow-violet-950/5 backdrop-blur">
+        <p class="text-xs font-semibold uppercase tracking-[0.3em] text-violet-700">
           Roles
         </p>
         <div class="mt-4 grid gap-4 md:grid-cols-2">
           {result.roles.map((role) => (
-            <section class="rounded-2xl border border-slate-200 p-4">
-              <p class="text-xs uppercase tracking-[0.24em] text-amber-600">
+            <section class="rounded-2xl border border-violet-100 bg-[linear-gradient(180deg,#ffffff_0%,#f8f5ff_100%)] p-4">
+              <p class="text-xs uppercase tracking-[0.24em] text-violet-600">
                 {role.perspective}
               </p>
               <h3 class="mt-2 text-lg font-semibold text-slate-900">
@@ -142,10 +146,14 @@ const renderResult = (
 };
 
 const RootPage = ({ session }: { session: WorkflowSession | null }) => (
-  <main class="min-h-screen bg-[radial-gradient(circle_at_top,_#fef3c7,_#f8fafc_45%,_#e2e8f0)] px-4 py-10 text-slate-900">
+  <main class="min-h-screen bg-[radial-gradient(circle_at_top_left,_rgba(59,130,246,0.28),_transparent_34%),radial-gradient(circle_at_top_right,_rgba(16,185,129,0.22),_transparent_32%),radial-gradient(circle_at_bottom,_rgba(139,92,246,0.2),_transparent_40%),linear-gradient(180deg,#eef4ff_0%,#f5f7fb_45%,#eef2ff_100%)] px-4 py-10 text-slate-900">
     <div class="mx-auto grid max-w-7xl gap-6 lg:grid-cols-[1.05fr_0.95fr]">
-      <section class="rounded-[32px] bg-slate-950 p-8 text-white shadow-2xl shadow-slate-950/20">
-        <p class="text-sm uppercase tracking-[0.28em] text-amber-300">roles</p>
+      <section class="rounded-[32px] border border-white/10 bg-[linear-gradient(160deg,#081120_0%,#10213f_58%,#0f2f36_100%)] p-8 text-white shadow-2xl shadow-sky-950/20">
+        <BrandMark
+          label="roles"
+          accentClassName="text-cyan-200"
+          textClassName="text-slate-300"
+        />
         <h1 class="mt-4 text-4xl font-semibold leading-tight">
           要件定義から
           <br />
@@ -167,19 +175,19 @@ const RootPage = ({ session }: { session: WorkflowSession | null }) => (
             id="message-input"
             name="message"
             rows={5}
-            class="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm leading-6 text-white outline-none transition focus:border-amber-300"
+            class="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm leading-6 text-white outline-none transition focus:border-cyan-300"
             placeholder="例: SIer 営業の行動データ化を進めるための要件を整理したい"
           />
           <button
             id="message-submit"
-            class="rounded-full bg-amber-300 px-5 py-3 text-sm font-semibold text-slate-950 transition hover:bg-amber-200"
+            class="rounded-full bg-[linear-gradient(135deg,var(--color-blue),var(--color-green))] px-5 py-3 text-sm font-semibold text-slate-950 transition hover:opacity-90"
             type="submit"
           >
             要件定義を開始
           </button>
         </form>
 
-        <p id="status-text" class="mt-4 text-sm text-amber-200" />
+        <p id="status-text" class="mt-4 text-sm text-cyan-200" />
 
         <section class="mt-8">
           <div class="flex items-center justify-between">
@@ -187,7 +195,7 @@ const RootPage = ({ session }: { session: WorkflowSession | null }) => (
             <span
               id="session-badge"
               data-session-id={session?.id ?? ""}
-              class="rounded-full border border-white/10 px-3 py-1 text-xs text-slate-300"
+              class="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-slate-300"
             >
               {session ? `Session: ${session.id}` : "Session: 未開始"}
             </span>
@@ -205,21 +213,6 @@ const RootPage = ({ session }: { session: WorkflowSession | null }) => (
       </section>
     </div>
   </main>
-);
-
-const PageShell = ({ children }: { children: Child }) => (
-  <html lang="ja">
-    <head>
-      <meta charSet="utf-8" />
-      <meta name="viewport" content="width=device-width, initial-scale=1" />
-      <title>roles</title>
-      <script src="https://cdn.tailwindcss.com"></script>
-      <style>{`
-        body { font-family: "Hiragino Sans", "Noto Sans JP", sans-serif; }
-      `}</style>
-    </head>
-    <body class="bg-slate-100">{children}</body>
-  </html>
 );
 
 const clientScript = `
@@ -248,8 +241,8 @@ const escapeHtml = (value) => value
 const renderMessage = (roleLabel, content, isAssistant) => {
   const article = document.createElement("article");
   article.className = isAssistant
-    ? "rounded-2xl border border-slate-300 bg-white px-4 py-3"
-    : "rounded-2xl border border-emerald-300 bg-emerald-50 px-4 py-3";
+    ? "rounded-2xl border border-sky-200/80 bg-white/95 px-4 py-3 shadow-sm shadow-sky-950/5"
+    : "rounded-2xl border border-emerald-300/80 bg-emerald-50/95 px-4 py-3 shadow-sm shadow-emerald-950/5";
   article.innerHTML = \`
     <p class="text-xs font-semibold uppercase tracking-[0.24em] text-slate-500">\${roleLabel}</p>
     <p class="mt-2 whitespace-pre-wrap text-sm leading-6 text-slate-700">\${escapeHtml(content)}</p>
@@ -261,19 +254,19 @@ const renderList = (title, items) => \`
   <section>
     <p class="text-sm font-semibold text-slate-900">\${escapeHtml(title)}</p>
     <ul class="mt-2 space-y-2 text-sm leading-6 text-slate-600">
-      \${items.map((item) => \`<li class="rounded-xl bg-white/80 px-3 py-2">\${escapeHtml(item)}</li>\`).join("")}
+      \${items.map((item) => \`<li class="rounded-xl border border-slate-200/80 bg-white/90 px-3 py-2 shadow-sm shadow-slate-950/5">\${escapeHtml(item)}</li>\`).join("")}
     </ul>
   </section>
 \`;
 
 const renderResult = (result) => {
   const startButton = state.sessionId
-    ? \`<div class="mt-6 flex justify-end"><a href="/arena/\${state.sessionId}" class="rounded-full bg-slate-950 px-5 py-3 text-sm font-semibold text-white transition hover:bg-slate-800">議論を開始</a></div>\`
+    ? \`<div class="mt-6 flex justify-end"><a href="/arena/\${state.sessionId}" class="rounded-full bg-[linear-gradient(135deg,var(--color-blue),var(--color-green))] px-5 py-3 text-sm font-semibold text-slate-950 transition hover:opacity-90">議論を開始</a></div>\`
     : "";
   resultPanel.innerHTML = \`
     <section class="space-y-6">
-      <article class="rounded-3xl bg-slate-950 p-6 text-white">
-        <p class="text-xs font-semibold uppercase tracking-[0.3em] text-amber-300">Requirement Definition</p>
+      <article class="rounded-[28px] border border-white/10 bg-[linear-gradient(160deg,#081120_0%,#10213f_55%,#102c38_100%)] p-6 text-white shadow-2xl shadow-sky-950/20">
+        <p class="text-xs font-semibold uppercase tracking-[0.3em] text-cyan-200">Requirement Definition</p>
         <h2 class="mt-3 text-2xl font-semibold">\${escapeHtml(result.requirements.theme)}</h2>
         <p class="mt-4 text-sm leading-6 text-slate-200">\${escapeHtml(result.requirements.objective)}</p>
         <div class="mt-5 grid gap-4 md:grid-cols-3">
@@ -282,23 +275,23 @@ const renderResult = (result) => {
           \${renderList("前提", result.requirements.assumptions)}
         </div>
       </article>
-      <article class="rounded-3xl border border-slate-200 bg-white p-6">
-        <p class="text-xs font-semibold uppercase tracking-[0.3em] text-slate-500">Discussion Points</p>
+      <article class="rounded-[28px] border border-sky-100 bg-white/90 p-6 shadow-xl shadow-sky-950/5 backdrop-blur">
+        <p class="text-xs font-semibold uppercase tracking-[0.3em] text-sky-700">Discussion Points</p>
         <div class="mt-4 grid gap-4">
           \${result.discussionPoints.map((point) => \`
-            <section class="rounded-2xl bg-slate-50 p-4">
+            <section class="rounded-2xl border border-sky-100 bg-[linear-gradient(180deg,#ffffff_0%,#eff6ff_100%)] p-4">
               <h3 class="font-semibold text-slate-900">\${escapeHtml(point.title)}</h3>
               <p class="mt-2 text-sm leading-6 text-slate-600">\${escapeHtml(point.description)}</p>
             </section>
           \`).join("")}
         </div>
       </article>
-      <article class="rounded-3xl border border-slate-200 bg-white p-6">
-        <p class="text-xs font-semibold uppercase tracking-[0.3em] text-slate-500">Roles</p>
+      <article class="rounded-[28px] border border-violet-100 bg-white/90 p-6 shadow-xl shadow-violet-950/5 backdrop-blur">
+        <p class="text-xs font-semibold uppercase tracking-[0.3em] text-violet-700">Roles</p>
         <div class="mt-4 grid gap-4 md:grid-cols-2">
           \${result.roles.map((role) => \`
-            <section class="rounded-2xl border border-slate-200 p-4">
-              <p class="text-xs uppercase tracking-[0.24em] text-amber-600">\${escapeHtml(role.perspective)}</p>
+            <section class="rounded-2xl border border-violet-100 bg-[linear-gradient(180deg,#ffffff_0%,#f8f5ff_100%)] p-4">
+              <p class="text-xs uppercase tracking-[0.24em] text-violet-600">\${escapeHtml(role.perspective)}</p>
               <h3 class="mt-2 text-lg font-semibold text-slate-900">\${escapeHtml(role.name)}</h3>
               <p class="mt-3 text-sm leading-6 text-slate-600">\${escapeHtml(role.systemPromptSeed)}</p>
               <div class="mt-4 grid gap-4">
@@ -420,7 +413,7 @@ messageForm.addEventListener("submit", async (event) => {
 
   if (isNewSession) {
     messages.innerHTML = "";
-    resultPanel.innerHTML = '<section class="rounded-3xl border border-dashed border-slate-300 bg-white/70 p-6"><p class="text-sm text-slate-500">ここに要件定義、論点、ロール定義が表示されます。</p></section>';
+    resultPanel.innerHTML = '<section class="rounded-[28px] border border-dashed border-slate-300/80 bg-white/75 p-6 shadow-lg shadow-slate-950/5 backdrop-blur"><p class="text-sm text-slate-500">ここに要件定義、論点、ロール定義が表示されます。</p></section>';
     state.completed = false;
     state.seenEventIds = new Set();
     renderMessage("あなた", message, false);
@@ -486,7 +479,9 @@ export const registerPhase1Routes = (
 
   app.use(
     "*",
-    jsxRenderer(({ children }) => <PageShell>{children}</PageShell>),
+    jsxRenderer(({ children }) => (
+      <PageShell title="roles">{children}</PageShell>
+    )),
   );
 
   app.get("/", (c) => {
@@ -657,6 +652,7 @@ export const registerPhase1Routes = (
 
 export const createPhase1App = (options: CreatePhase1AppOptions = {}) => {
   const app = new Hono();
+  registerStaticAssetRoutes(app);
   const requirementAgent =
     options.requirementAgent ?? safelyCreateRequirementAgentFromEnv();
   const repository = options.repository ?? new WorkflowSessionRepository();

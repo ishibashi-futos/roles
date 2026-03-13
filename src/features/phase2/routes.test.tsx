@@ -113,6 +113,64 @@ describe("phase2 parsers", () => {
 });
 
 describe("phase2 routes", () => {
+  test("Arena ページで favicon と UI ロゴを参照する", async () => {
+    const app = createApp({
+      repository: createTestRepository(),
+      requirementAgent: completeImmediatelyRequirementAgent,
+      facilitatorAgent: {
+        async decide() {
+          throw new Error("unexpected");
+        },
+      },
+      roleAgent: {
+        async speak() {
+          throw new Error("unexpected");
+        },
+      },
+      judgeAgent: {
+        async decide() {
+          throw new Error("unexpected");
+        },
+      },
+    });
+
+    const response = await app.request("/arena/test-session");
+
+    expect(response.status).toBe(200);
+    const html = await response.text();
+    expect(html).toContain('rel="icon"');
+    expect(html).toContain('href="/icon.svg"');
+    expect(html).toContain('alt="roles ロゴ"');
+  });
+
+  test("createApp でも icon.svg を静的配信できる", async () => {
+    const app = createApp({
+      repository: createTestRepository(),
+      requirementAgent: completeImmediatelyRequirementAgent,
+      facilitatorAgent: {
+        async decide() {
+          throw new Error("unexpected");
+        },
+      },
+      roleAgent: {
+        async speak() {
+          throw new Error("unexpected");
+        },
+      },
+      judgeAgent: {
+        async decide() {
+          throw new Error("unexpected");
+        },
+      },
+    });
+
+    const response = await app.request("/icon.svg");
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-type")).toContain("image/svg+xml");
+    expect(await response.text()).toContain("<svg");
+  });
+
   test("Phase1 完了後に Phase2 を開始できる", async () => {
     const facilitatorAgent: FacilitatorAgent = {
       async decide(input) {

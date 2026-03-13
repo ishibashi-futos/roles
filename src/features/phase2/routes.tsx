@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { streamSSE } from "hono/streaming";
-import type { Child } from "hono/jsx";
 import { jsxRenderer } from "hono/jsx-renderer";
+import { BrandMark, PageShell } from "../../shared/branding";
 import { logger } from "../../shared/logger";
 import type { WorkflowSessionRepository } from "../../shared/workflow-session-repository";
 import type { Phase2Service } from "./service";
@@ -11,41 +11,30 @@ type RegisterPhase2RoutesOptions = {
   service: Phase2Service;
 };
 
-const PageShell = ({ children }: { children: Child }) => (
-  <html lang="ja">
-    <head>
-      <meta charSet="utf-8" />
-      <meta name="viewport" content="width=device-width, initial-scale=1" />
-      <title>roles Arena</title>
-      <script src="https://cdn.tailwindcss.com"></script>
-      <style>{`
-        body { font-family: "Hiragino Sans", "Noto Sans JP", sans-serif; }
-      `}</style>
-    </head>
-    <body class="bg-slate-950 text-white">{children}</body>
-  </html>
-);
-
 const ArenaPage = ({ sessionId }: { sessionId: string }) => (
-  <main class="min-h-screen bg-[radial-gradient(circle_at_top,_#1e293b,_#020617_55%,_#020617)] px-4 py-8">
+  <main class="min-h-screen bg-[radial-gradient(circle_at_top_left,_rgba(59,130,246,0.26),_transparent_26%),radial-gradient(circle_at_top_right,_rgba(16,185,129,0.18),_transparent_28%),radial-gradient(circle_at_bottom,_rgba(139,92,246,0.18),_transparent_34%),linear-gradient(180deg,#081120_0%,#0b1730_55%,#081120_100%)] px-4 py-8">
     <div class="mx-auto max-w-7xl">
       <div class="mb-6 flex items-center justify-between gap-4">
-        <div>
-          <p class="text-xs uppercase tracking-[0.28em] text-amber-300">
-            roles
-          </p>
-          <h1 class="mt-3 text-3xl font-semibold">Arena</h1>
+        <div class="flex items-center gap-4">
+          <BrandMark
+            label="roles"
+            accentClassName="text-cyan-200"
+            textClassName="text-slate-400"
+          />
+          <div>
+            <h1 class="text-3xl font-semibold">Arena</h1>
+          </div>
         </div>
         <a
           href="/"
-          class="rounded-full border border-white/10 px-4 py-2 text-sm text-slate-200"
+          class="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm text-slate-200"
         >
           Lobby に戻る
         </a>
       </div>
 
       <div class="grid gap-6 lg:grid-cols-[1.4fr_0.6fr]">
-        <section class="rounded-[28px] border border-white/10 bg-white/5 p-6 shadow-2xl shadow-black/20">
+        <section class="rounded-[28px] border border-white/10 bg-white/5 p-6 shadow-2xl shadow-black/20 backdrop-blur">
           <div class="flex items-center justify-between">
             <div>
               <p class="text-sm uppercase tracking-[0.24em] text-slate-400">
@@ -59,7 +48,7 @@ const ArenaPage = ({ sessionId }: { sessionId: string }) => (
                 {sessionId}
               </p>
             </div>
-            <p id="status-text" class="text-sm text-amber-200" />
+            <p id="status-text" class="text-sm text-cyan-200" />
           </div>
 
           <div
@@ -71,7 +60,7 @@ const ArenaPage = ({ sessionId }: { sessionId: string }) => (
         </section>
 
         <aside class="space-y-4">
-          <section class="rounded-[28px] border border-white/10 bg-white/5 p-6">
+          <section class="rounded-[28px] border border-white/10 bg-white/5 p-6 backdrop-blur">
             <p class="text-xs uppercase tracking-[0.28em] text-slate-400">
               Dashboard
             </p>
@@ -95,7 +84,7 @@ const ArenaPage = ({ sessionId }: { sessionId: string }) => (
             </div>
           </section>
 
-          <section class="rounded-[28px] border border-white/10 bg-white/5 p-6">
+          <section class="rounded-[28px] border border-white/10 bg-white/5 p-6 backdrop-blur">
             <p class="text-xs uppercase tracking-[0.28em] text-slate-400">
               Discussion Points
             </p>
@@ -105,7 +94,7 @@ const ArenaPage = ({ sessionId }: { sessionId: string }) => (
           <button
             id="retry-button"
             type="button"
-            class="hidden w-full rounded-full bg-amber-300 px-5 py-3 text-sm font-semibold text-slate-950"
+            class="hidden w-full rounded-full bg-[linear-gradient(135deg,var(--color-blue),var(--color-green))] px-5 py-3 text-sm font-semibold text-slate-950"
           >
             再試行
           </button>
@@ -145,7 +134,7 @@ const escapeHtml = (value) => String(value)
 const speakerClassByType = {
   facilitator: "border-sky-400/40 bg-sky-400/10",
   role: "border-emerald-400/40 bg-emerald-400/10",
-  judge: "border-amber-300/40 bg-amber-300/10",
+  judge: "border-violet-400/40 bg-violet-400/10",
 };
 
 const renderMessages = () => {
@@ -181,7 +170,7 @@ const renderBanner = () => {
   if (state.session.phase2.status === "completed") {
     banner.classList.remove("hidden");
     if (state.session.phase2.completionReason === "circuit_breaker") {
-      banner.classList.add("border-amber-300/40", "bg-amber-300/10", "text-amber-100");
+      banner.classList.add("border-violet-300/40", "bg-violet-300/10", "text-violet-100");
       banner.textContent = "最大ターン数に達したため未解決論点を残して終了しました。";
       return;
     }
@@ -360,7 +349,9 @@ export const registerPhase2Routes = (
 
   app.use(
     "/arena/*",
-    jsxRenderer(({ children }) => <PageShell>{children}</PageShell>),
+    jsxRenderer(({ children }) => (
+      <PageShell title="roles Arena">{children}</PageShell>
+    )),
   );
 
   app.get("/arena/:sessionId", (c) => {
