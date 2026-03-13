@@ -37,7 +37,7 @@ const ReportPage = ({ sessionId }: { sessionId: string }) => (
             href="/"
             class="rounded-full border border-slate-200 bg-white px-4 py-2 text-sm text-slate-700"
           >
-            Lobby に戻る
+            ホームに戻る
           </a>
         </div>
       </div>

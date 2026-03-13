@@ -102,7 +102,7 @@ describe("output language", () => {
 });
 
 describe("phase1 routes", () => {
-  test("トップページで favicon と UI ロゴを参照する", async () => {
+  test("トップページで favicon とホーム画面を表示する", async () => {
     const app = createPhase1App({
       repository: createTestRepository(),
     });
@@ -114,6 +114,21 @@ describe("phase1 routes", () => {
     expect(html).toContain('rel="icon"');
     expect(html).toContain('href="/icon.svg"');
     expect(html).toContain('alt="roles ロゴ"');
+    expect(html).toContain("新規セッションを開始");
+    expect(html).toContain("過去セッション");
+  });
+
+  test("新規セッション画面を表示できる", async () => {
+    const app = createPhase1App({
+      repository: createTestRepository(),
+    });
+
+    const response = await app.request("/sessions/new");
+
+    expect(response.status).toBe(200);
+    const html = await response.text();
+    expect(html).toContain("要件定義を開始");
+    expect(html).toContain("ホームに戻る");
   });
 
   test("icon.svg を静的配信できる", async () => {
@@ -217,6 +232,40 @@ describe("phase1 routes", () => {
     const text = await eventsResponse.text();
     expect(text).toContain("requirements_completed");
     expect(text).toContain("定義がまとまりました。");
+  });
+
+  test("既存セッションを個別ページで再開できる", async () => {
+    const app = createPhase1App({
+      requirementAgent: {
+        async decide() {
+          return {
+            kind: "ask",
+            message: "対象ユーザーを教えてください。",
+          };
+        },
+      },
+      repository: createTestRepository(),
+    });
+
+    const createResponse = await app.request("/api/phase1/sessions", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        topic: "営業行動をデータ化したい",
+      }),
+    });
+    const created = (await createResponse.json()) as { sessionId: string };
+
+    await Bun.sleep(0);
+
+    const response = await app.request(`/sessions/${created.sessionId}`);
+
+    expect(response.status).toBe(200);
+    const html = await response.text();
+    expect(html).toContain(`Session: ${created.sessionId}`);
+    expect(html).toContain("対象ユーザーを教えてください。");
   });
 
   test("エージェント失敗時は error イベントを返す", async () => {

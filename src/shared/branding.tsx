@@ -48,7 +48,7 @@ export const BrandMark = ({
   accentClassName,
   textClassName,
 }: BrandMarkProps) => (
-  <div class="flex items-center gap-3">
+  <a href="/" class="inline-flex items-center gap-3">
     <img src="/icon.svg" alt="roles ロゴ" class="h-10 w-10 rounded-2xl" />
     <div>
       <p class={`text-xs uppercase tracking-[0.28em] ${accentClassName}`}>
@@ -56,5 +56,5 @@ export const BrandMark = ({
       </p>
       <p class={`text-sm font-medium ${textClassName}`}>multi-agent workflow</p>
     </div>
-  </div>
+  </a>
 );

@@ -145,7 +145,183 @@ const renderResult = (
   );
 };
 
-const RootPage = ({ session }: { session: WorkflowSession | null }) => (
+const formatTimestamp = (value: string) =>
+  new Intl.DateTimeFormat("ja-JP", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(new Date(value));
+
+const getSessionStatusLabel = (session: WorkflowSession) => {
+  if (session.phase3.status === "completed") {
+    return "レポート完了";
+  }
+  if (session.phase3.status === "running") {
+    return "レポート生成中";
+  }
+  if (session.phase3.status === "failed") {
+    return "レポート失敗";
+  }
+  if (session.phase2.status === "completed") {
+    return "議論完了";
+  }
+  if (session.phase2.status === "running") {
+    return "議論中";
+  }
+  if (session.phase2.status === "failed") {
+    return "議論失敗";
+  }
+  if (session.phase1.status === "completed") {
+    return "議論開始待ち";
+  }
+  if (session.phase1.status === "failed") {
+    return "要件定義失敗";
+  }
+  return "要件定義中";
+};
+
+const getSessionPrimaryLink = (session: WorkflowSession) => {
+  if (
+    session.phase3.status === "completed" ||
+    session.phase3.status === "failed"
+  ) {
+    return `/report/${session.id}`;
+  }
+  if (
+    session.phase2.status === "running" ||
+    session.phase2.status === "completed" ||
+    session.phase2.status === "failed"
+  ) {
+    return `/arena/${session.id}`;
+  }
+  return `/sessions/${session.id}`;
+};
+
+const HomePage = ({ sessions }: { sessions: WorkflowSession[] }) => (
+  <main class="min-h-screen bg-[radial-gradient(circle_at_top_left,_rgba(59,130,246,0.22),_transparent_30%),radial-gradient(circle_at_top_right,_rgba(16,185,129,0.18),_transparent_28%),linear-gradient(180deg,#f7fbff_0%,#eef4ff_52%,#f8fafc_100%)] px-4 py-10 text-slate-900">
+    <div class="mx-auto max-w-7xl space-y-6">
+      <section class="grid gap-6 lg:grid-cols-[1fr_1.2fr]">
+        <article class="rounded-[32px] border border-white/70 bg-[linear-gradient(160deg,#081120_0%,#10213f_58%,#0f2f36_100%)] p-8 text-white shadow-2xl shadow-sky-950/15">
+          <BrandMark
+            label="roles"
+            accentClassName="text-cyan-200"
+            textClassName="text-slate-300"
+          />
+          <h1 class="mt-4 text-4xl font-semibold leading-tight">
+            セッションを選んで
+            <br />
+            議論を前に進める
+          </h1>
+          <p class="mt-5 max-w-xl text-sm leading-7 text-slate-300">
+            新しいテーマの要件定義を始めるか、既存セッションの要件定義・議論・レポートを再開します。
+          </p>
+          <div class="mt-8">
+            <a
+              href="/sessions/new"
+              class="inline-flex rounded-full bg-[linear-gradient(135deg,var(--color-blue),var(--color-green))] px-6 py-3 text-sm font-semibold text-slate-950 transition hover:opacity-90"
+            >
+              新規セッションを開始
+            </a>
+          </div>
+        </article>
+
+        <article class="rounded-[32px] border border-white/80 bg-white/85 p-8 shadow-xl shadow-slate-950/5 backdrop-blur">
+          <p class="text-xs font-semibold uppercase tracking-[0.28em] text-sky-700">
+            Summary
+          </p>
+          <div class="mt-5 grid gap-4 sm:grid-cols-3">
+            <section class="rounded-2xl border border-slate-200/80 bg-slate-50 px-4 py-5">
+              <p class="text-sm text-slate-500">総セッション数</p>
+              <p class="mt-2 text-3xl font-semibold text-slate-900">
+                {sessions.length}
+              </p>
+            </section>
+            <section class="rounded-2xl border border-slate-200/80 bg-slate-50 px-4 py-5">
+              <p class="text-sm text-slate-500">進行中</p>
+              <p class="mt-2 text-3xl font-semibold text-slate-900">
+                {
+                  sessions.filter(
+                    (session) =>
+                      session.phase1.status === "collecting_requirements" ||
+                      session.phase2.status === "running" ||
+                      session.phase3.status === "running",
+                  ).length
+                }
+              </p>
+            </section>
+            <section class="rounded-2xl border border-slate-200/80 bg-slate-50 px-4 py-5">
+              <p class="text-sm text-slate-500">レポート完了</p>
+              <p class="mt-2 text-3xl font-semibold text-slate-900">
+                {
+                  sessions.filter(
+                    (session) => session.phase3.status === "completed",
+                  ).length
+                }
+              </p>
+            </section>
+          </div>
+        </article>
+      </section>
+
+      <section class="rounded-[32px] border border-white/80 bg-white/90 p-8 shadow-2xl shadow-slate-950/5 backdrop-blur">
+        <div class="flex items-center justify-between gap-4">
+          <div>
+            <p class="text-xs font-semibold uppercase tracking-[0.28em] text-slate-500">
+              Sessions
+            </p>
+            <h2 class="mt-2 text-2xl font-semibold text-slate-900">
+              過去セッション
+            </h2>
+          </div>
+        </div>
+
+        {sessions.length === 0 ? (
+          <section class="mt-6 rounded-[28px] border border-dashed border-slate-300 bg-slate-50 px-6 py-12 text-center">
+            <p class="text-base font-medium text-slate-700">
+              まだセッションはありません。
+            </p>
+            <p class="mt-2 text-sm text-slate-500">
+              「新規セッションを開始」から最初のテーマを作成してください。
+            </p>
+          </section>
+        ) : (
+          <div class="mt-6 grid gap-4">
+            {sessions.map((session) => (
+              <a
+                href={getSessionPrimaryLink(session)}
+                class="block rounded-[28px] border border-slate-200/80 bg-[linear-gradient(180deg,#ffffff_0%,#f8fbff_100%)] p-6 shadow-sm transition hover:-translate-y-0.5 hover:shadow-lg"
+              >
+                <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                  <div class="min-w-0">
+                    <div class="flex flex-wrap items-center gap-3">
+                      <span class="rounded-full border border-sky-200 bg-sky-50 px-3 py-1 text-xs font-semibold text-sky-700">
+                        {getSessionStatusLabel(session)}
+                      </span>
+                      <span class="text-xs text-slate-400">{session.id}</span>
+                    </div>
+                    <h3 class="mt-3 text-lg font-semibold text-slate-900">
+                      {session.topic}
+                    </h3>
+                  </div>
+                  <div class="shrink-0 text-sm text-slate-500">
+                    <p>更新: {formatTimestamp(session.updatedAt)}</p>
+                    <p class="mt-1">
+                      作成: {formatTimestamp(session.createdAt)}
+                    </p>
+                  </div>
+                </div>
+              </a>
+            ))}
+          </div>
+        )}
+      </section>
+    </div>
+  </main>
+);
+
+const SessionPage = ({ session }: { session: WorkflowSession | null }) => (
   <main class="min-h-screen bg-[radial-gradient(circle_at_top_left,_rgba(59,130,246,0.28),_transparent_34%),radial-gradient(circle_at_top_right,_rgba(16,185,129,0.22),_transparent_32%),radial-gradient(circle_at_bottom,_rgba(139,92,246,0.2),_transparent_40%),linear-gradient(180deg,#eef4ff_0%,#f5f7fb_45%,#eef2ff_100%)] px-4 py-10 text-slate-900">
     <div class="mx-auto grid max-w-7xl gap-6 lg:grid-cols-[1.05fr_0.95fr]">
       <section class="rounded-[32px] border border-white/10 bg-[linear-gradient(160deg,#081120_0%,#10213f_58%,#0f2f36_100%)] p-8 text-white shadow-2xl shadow-sky-950/20">
@@ -162,6 +338,15 @@ const RootPage = ({ session }: { session: WorkflowSession | null }) => (
         <p class="mt-5 max-w-2xl text-sm leading-7 text-slate-300">
           初期テーマを入力すると、要件定義役が不足情報を対話で回収し、議論に必要な論点とロールを構造化します。
         </p>
+
+        <div class="mt-6">
+          <a
+            href="/"
+            class="inline-flex rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm text-slate-200"
+          >
+            ホームに戻る
+          </a>
+        </div>
 
         <form id="message-form" class="mt-8 space-y-4">
           <label
@@ -195,6 +380,7 @@ const RootPage = ({ session }: { session: WorkflowSession | null }) => (
             <span
               id="session-badge"
               data-session-id={session?.id ?? ""}
+              data-session-status={session?.phase1.status ?? ""}
               class="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-slate-300"
             >
               {session ? `Session: ${session.id}` : "Session: 未開始"}
@@ -216,10 +402,11 @@ const RootPage = ({ session }: { session: WorkflowSession | null }) => (
 );
 
 const clientScript = `
+const sessionBadge = document.getElementById("session-badge");
 const state = {
-  sessionId: document.getElementById("session-badge")?.dataset.sessionId || "",
+  sessionId: sessionBadge?.dataset.sessionId || "",
   eventSource: null,
-  completed: false,
+  completed: sessionBadge?.dataset.sessionStatus === "completed",
   seenEventIds: new Set(),
   awaitingResponse: false,
 };
@@ -231,7 +418,6 @@ const messageSubmit = document.getElementById("message-submit");
 const messages = document.getElementById("messages");
 const statusText = document.getElementById("status-text");
 const resultPanel = document.getElementById("result-panel");
-const sessionBadge = document.getElementById("session-badge");
 
 const escapeHtml = (value) => value
   .replaceAll("&", "&amp;")
@@ -436,6 +622,7 @@ messageForm.addEventListener("submit", async (event) => {
     const payload = await response.json();
     state.sessionId = payload.sessionId;
     sessionBadge.dataset.sessionId = payload.sessionId;
+    sessionBadge.dataset.sessionStatus = "collecting_requirements";
     sessionBadge.textContent = \`Session: \${payload.sessionId}\`;
     connectEvents();
     statusText.textContent =
@@ -461,6 +648,13 @@ messageForm.addEventListener("submit", async (event) => {
 });
 
 updateInputMode();
+if (state.sessionId && !state.completed) {
+  connectEvents();
+  statusText.textContent = "保存済みセッションを再開しました。";
+}
+if (state.completed) {
+  statusText.textContent = "整理済みの要件・論点・ロール定義を表示しています。";
+}
 `;
 
 const createFallbackAgent = (): RequirementAgent => ({
@@ -485,9 +679,30 @@ export const registerPhase1Routes = (
   );
 
   app.get("/", (c) => {
+    const sessions = repository.listSessions();
+    return c.render(<HomePage sessions={sessions} />);
+  });
+
+  app.get("/sessions/new", (c) => {
     return c.render(
       <>
-        <RootPage session={null} />
+        <SessionPage session={null} />
+        <script dangerouslySetInnerHTML={{ __html: clientScript }} />
+      </>,
+    );
+  });
+
+  app.get("/sessions/:sessionId", (c) => {
+    const sessionId = c.req.param("sessionId");
+    const session = service.getSession(sessionId);
+
+    if (!session) {
+      return c.notFound();
+    }
+
+    return c.render(
+      <>
+        <SessionPage session={session} />
         <script dangerouslySetInnerHTML={{ __html: clientScript }} />
       </>,
     );

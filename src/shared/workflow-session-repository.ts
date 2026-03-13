@@ -258,6 +258,13 @@ export class WorkflowSessionRepository {
     return row ? mapSession(row) : null;
   }
 
+  listSessions() {
+    const rows = this.database
+      .query(`SELECT * FROM sessions ORDER BY updated_at DESC, created_at DESC`)
+      .all() as SessionRow[];
+    return rows.map(mapSession);
+  }
+
   appendPhase1UserMessage(sessionId: string, content: string) {
     const session = this.requireSession(sessionId);
     session.phase1.messages.push({ role: "user", content });

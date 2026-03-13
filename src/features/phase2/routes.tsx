@@ -29,7 +29,7 @@ const ArenaPage = ({ sessionId }: { sessionId: string }) => (
           href="/"
           class="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm text-slate-200"
         >
-          Lobby に戻る
+          ホームに戻る
         </a>
       </div>
 
