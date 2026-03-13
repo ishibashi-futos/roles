@@ -91,6 +91,20 @@ describe("output language", () => {
     expect(prompt).toContain("Interact with the user in English");
   });
 
+  test("要件定義役プロンプトは上位職種と指定ロールを許容する", () => {
+    const prompt = buildRequirementAgentSystemPrompt("ja");
+
+    expect(prompt).toContain(
+      "Include executive or sponsor roles such as CxO, business owner, or department head when they are relevant to the topic",
+    );
+    expect(prompt).toContain(
+      "If the user explicitly requests certain roles, titles, seniority levels, or stakeholder groups, reflect them in the generated roles unless they directly conflict with the topic",
+    );
+    expect(prompt).toContain(
+      "Do not exclude a role only because it is senior, strategic, or not a day-to-day operator",
+    );
+  });
+
   test("要件定義役の補助指示は常に英語を使う", () => {
     expect(buildRequirementAgentInstruction(true)).toContain(
       'always return kind="complete"',

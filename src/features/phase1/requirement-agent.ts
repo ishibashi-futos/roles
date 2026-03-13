@@ -64,6 +64,10 @@ Rules:
 - Return kind="ask" while critical information is still missing
 - You may return kind="complete" if the definition is good enough to start the discussion, even if some ambiguity remains
 - roles must contain between 3 and ${MAX_ROLE_COUNT} items
+- Choose roles to maximize decision quality for the topic, not just operational coverage
+- Include executive or sponsor roles such as CxO, business owner, or department head when they are relevant to the topic
+- If the user explicitly requests certain roles, titles, seniority levels, or stakeholder groups, reflect them in the generated roles unless they directly conflict with the topic
+- Do not exclude a role only because it is senior, strategic, or not a day-to-day operator
 - discussionPoints must contain at least 2 items
 - successCriteria, constraints, assumptions, responsibilities, and concerns must never be empty arrays`;
 
