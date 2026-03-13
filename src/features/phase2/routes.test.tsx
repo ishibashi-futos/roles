@@ -1,3 +1,4 @@
+import "../../test/silence-runtime";
 import { describe, expect, test } from "bun:test";
 import { createApp } from "../../app";
 import { WorkflowSessionRepository } from "../../shared/workflow-session-repository";
@@ -63,10 +64,7 @@ const completedResult: Phase1Result = {
   ],
 };
 
-const createTestRepository = () =>
-  new WorkflowSessionRepository(
-    `/tmp/roles-phase2-${crypto.randomUUID()}.sqlite`,
-  );
+const createTestRepository = () => new WorkflowSessionRepository(":memory:");
 
 const completeImmediatelyRequirementAgent: RequirementAgent = {
   async decide() {

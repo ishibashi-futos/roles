@@ -1,3 +1,4 @@
+import "../../test/silence-runtime";
 import { describe, expect, test } from "bun:test";
 import { createPhase1App } from "./routes";
 import type { RequirementAgent } from "./requirement-agent";
@@ -57,10 +58,7 @@ const completedResult = {
   ],
 };
 
-const createTestRepository = () =>
-  new WorkflowSessionRepository(
-    `/tmp/roles-phase1-${crypto.randomUUID()}.sqlite`,
-  );
+const createTestRepository = () => new WorkflowSessionRepository(":memory:");
 
 describe("parseRequirementAgentDecision", () => {
   test("complete の JSON を解釈できる", () => {

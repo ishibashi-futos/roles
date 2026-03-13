@@ -108,7 +108,9 @@ export class WorkflowSessionRepository {
   constructor(
     databasePath = process.env.ROLES_DB_PATH ?? DEFAULT_DATABASE_PATH,
   ) {
-    mkdirSync(dirname(databasePath), { recursive: true });
+    if (databasePath !== ":memory:") {
+      mkdirSync(dirname(databasePath), { recursive: true });
+    }
     this.database = new Database(databasePath, { create: true });
     this.database.exec("PRAGMA journal_mode = WAL;");
     this.database.exec(`
