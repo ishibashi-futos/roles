@@ -7,7 +7,13 @@ import type {
 } from "../../shared/workflow-types";
 import type { FacilitatorAgent, JudgeAgent, RoleAgent } from "./agents";
 import type { RequirementAgent } from "../phase1/requirement-agent";
-import { parseFacilitatorDecision, parseJudgeDecision } from "./agents";
+import {
+  buildFacilitatorSystemPrompt,
+  buildJudgeSystemPrompt,
+  buildRoleSystemPrompt,
+  parseFacilitatorDecision,
+  parseJudgeDecision,
+} from "./agents";
 
 const completedResult: Phase1Result = {
   requirements: {
@@ -109,6 +115,22 @@ describe("phase2 parsers", () => {
     );
 
     expect(result.isResolved).toBe(true);
+  });
+});
+
+describe("phase2 output language prompts", () => {
+  test("ファシリテーターを en に切り替えられる", () => {
+    expect(buildFacilitatorSystemPrompt("en")).toContain(
+      "structured discussion in English",
+    );
+  });
+
+  test("ロールを en に切り替えられる", () => {
+    expect(buildRoleSystemPrompt("en")).toContain("speak in English");
+  });
+
+  test("judge を en に切り替えられる", () => {
+    expect(buildJudgeSystemPrompt("en")).toContain("reason must be in English");
   });
 });
 

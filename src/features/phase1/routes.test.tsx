@@ -1,8 +1,12 @@
 import { describe, expect, test } from "bun:test";
 import { createPhase1App } from "./routes";
 import type { RequirementAgent } from "./requirement-agent";
-import { parseRequirementAgentDecision } from "./requirement-agent";
+import {
+  buildRequirementAgentSystemPrompt,
+  parseRequirementAgentDecision,
+} from "./requirement-agent";
 import { WorkflowSessionRepository } from "../../shared/workflow-session-repository";
+import { getOutputLanguageFromEnv } from "../../shared/output-language";
 
 const completedResult = {
   requirements: {
@@ -74,6 +78,18 @@ describe("parseRequirementAgentDecision", () => {
     expect(() => parseRequirementAgentDecision("{invalid")).toThrow(
       "要件定義役の JSON を解釈できませんでした。",
     );
+  });
+});
+
+describe("output language", () => {
+  test("未設定時は ja を使う", () => {
+    expect(getOutputLanguageFromEnv({})).toBe("ja");
+  });
+
+  test("要件定義役プロンプトを en に切り替えられる", () => {
+    const prompt = buildRequirementAgentSystemPrompt("en");
+
+    expect(prompt).toContain("Interact with the user in English");
   });
 });
 

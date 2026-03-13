@@ -1,5 +1,10 @@
 import { OpenAiCompatibleClient } from "../../shared/llm/openai-compatible-client";
 import { logger } from "../../shared/logger";
+import {
+  describeOutputLanguage,
+  getOutputLanguageFromEnv,
+  type OutputLanguage,
+} from "../../shared/output-language";
 import type {
   ArenaMessage,
   DiscussionPoint,
@@ -31,21 +36,27 @@ const JUDGE_SCHEMA = {
   required: ["isResolved", "reason"],
 } as const;
 
-const FACILITATOR_SYSTEM_PROMPT = `You are the facilitator for roles.
-You must advance a structured discussion in Japanese.
+export const buildFacilitatorSystemPrompt = (
+  outputLanguage: OutputLanguage,
+) => `You are the facilitator for roles.
+You must advance a structured discussion in ${describeOutputLanguage(outputLanguage)}.
 Always focus on the current discussion point only.
 Return JSON only with discussionPointId, targetRoleId, and message.
 The message must be a concise facilitation utterance addressed to the selected role.`;
 
-const ROLE_SYSTEM_PROMPT = `You are a discussion participant for roles.
-You must speak in Japanese and maintain the assigned role perspective consistently.
+export const buildRoleSystemPrompt = (
+  outputLanguage: OutputLanguage,
+) => `You are a discussion participant for roles.
+You must speak in ${describeOutputLanguage(outputLanguage)} and maintain the assigned role perspective consistently.
 Return plain text only.
 Keep the response concise and specific to the current discussion point.`;
 
-const JUDGE_SYSTEM_PROMPT = `You are the judge for roles.
+export const buildJudgeSystemPrompt = (
+  outputLanguage: OutputLanguage,
+) => `You are the judge for roles.
 You must evaluate whether the current discussion point is resolved.
 Return JSON only with isResolved and reason.
-The reason must be in Japanese and refer only to the current discussion point.`;
+The reason must be in ${describeOutputLanguage(outputLanguage)} and refer only to the current discussion point.`;
 
 const createClientFromEnv = () => {
   const baseUrl = process.env.OPENAI_BASE_URL;
@@ -107,11 +118,12 @@ export class OpenAiFacilitatorAgent implements FacilitatorAgent {
     roles: RoleDefinition[];
     messages: ArenaMessage[];
   }) {
+    const outputLanguage = getOutputLanguageFromEnv();
     const content = await this.client.createJsonChatCompletion(
       [
         {
           role: "system",
-          content: FACILITATOR_SYSTEM_PROMPT,
+          content: buildFacilitatorSystemPrompt(outputLanguage),
         },
         {
           role: "user",
@@ -142,10 +154,11 @@ export class OpenAiRoleAgent implements RoleAgent {
     facilitatorMessage: string;
     messages: ArenaMessage[];
   }) {
+    const outputLanguage = getOutputLanguageFromEnv();
     const content = await this.client.createTextChatCompletion([
       {
         role: "system",
-        content: `${ROLE_SYSTEM_PROMPT}\nRole name: ${input.role.name}\nPerspective: ${input.role.perspective}\nSystem prompt seed: ${input.role.systemPromptSeed}`,
+        content: `${buildRoleSystemPrompt(outputLanguage)}\nRole name: ${input.role.name}\nPerspective: ${input.role.perspective}\nSystem prompt seed: ${input.role.systemPromptSeed}`,
       },
       {
         role: "user",
@@ -172,11 +185,12 @@ export class OpenAiJudgeAgent implements JudgeAgent {
     roles: RoleDefinition[];
     messages: ArenaMessage[];
   }) {
+    const outputLanguage = getOutputLanguageFromEnv();
     const content = await this.client.createJsonChatCompletion(
       [
         {
           role: "system",
-          content: JUDGE_SYSTEM_PROMPT,
+          content: buildJudgeSystemPrompt(outputLanguage),
         },
         {
           role: "user",

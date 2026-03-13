@@ -1,5 +1,10 @@
 import { OpenAiCompatibleClient } from "../../shared/llm/openai-compatible-client";
 import { logger } from "../../shared/logger";
+import {
+  describeOutputLanguage,
+  getOutputLanguageFromEnv,
+  type OutputLanguage,
+} from "../../shared/output-language";
 import type {
   Phase1Result,
   RequirementAgentDecision,
@@ -8,7 +13,9 @@ import type {
 
 const MAX_ROLE_COUNT = 5;
 
-const REQUIREMENT_AGENT_SYSTEM_PROMPT = `You are the requirement-definition agent for roles.
+export const buildRequirementAgentSystemPrompt = (
+  outputLanguage: OutputLanguage,
+) => `You are the requirement-definition agent for roles.
 Your job is to transform an ambiguous user topic into a discussion-ready definition with explicit requirements, discussion points, and role definitions.
 
 You must return a JSON object only.
@@ -53,12 +60,27 @@ The JSON must match one of the following shapes.
 }
 
 Rules:
-- Interact with the user in Japanese
+- Interact with the user in ${describeOutputLanguage(outputLanguage)}
 - Return kind="ask" while critical information is still missing
 - You may return kind="complete" if the definition is good enough to start the discussion, even if some ambiguity remains
 - roles must contain between 3 and ${MAX_ROLE_COUNT} items
 - discussionPoints must contain at least 2 items
 - successCriteria, constraints, assumptions, responsibilities, and concerns must never be empty arrays`;
+
+const buildForcedCompletionInstruction = (
+  outputLanguage: OutputLanguage,
+  shouldForceComplete: boolean,
+) => {
+  if (outputLanguage === "ja") {
+    return shouldForceComplete
+      ? "今回が最終確認です。追加質問は禁止し、必ず kind=complete を返してください。"
+      : "必要なら kind=ask を返してください。";
+  }
+
+  return shouldForceComplete
+    ? 'This is the final confirmation. Do not ask follow-up questions and always return kind="complete".'
+    : 'Return kind="ask" if more information is required.';
+};
 
 const REQUIREMENT_AGENT_RESPONSE_SCHEMA = {
   type: "object",
@@ -183,16 +205,17 @@ export class OpenAiRequirementAgent implements RequirementAgent {
     userReplyCount: number;
     maxUserReplyCount: number;
   }) {
-    const forcedCompletionInstruction =
-      input.userReplyCount >= input.maxUserReplyCount
-        ? "今回が最終確認です。追加質問は禁止し、必ず kind=complete を返してください。"
-        : "必要なら kind=ask を返してください。";
+    const outputLanguage = getOutputLanguageFromEnv();
+    const forcedCompletionInstruction = buildForcedCompletionInstruction(
+      outputLanguage,
+      input.userReplyCount >= input.maxUserReplyCount,
+    );
 
     const content = await this.client.createJsonChatCompletion(
       [
         {
           role: "system",
-          content: REQUIREMENT_AGENT_SYSTEM_PROMPT,
+          content: buildRequirementAgentSystemPrompt(outputLanguage),
         },
         {
           role: "user",
