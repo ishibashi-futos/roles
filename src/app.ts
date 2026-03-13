@@ -1,7 +1,5 @@
-import { Hono } from "hono";
+import { createPhase1App } from "./features/phase1/routes";
 
-const app = new Hono();
-
-app.get("/", (c) => c.text("Hello"));
+const app = createPhase1App();
 
 export default app;
