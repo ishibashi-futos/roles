@@ -1,0 +1,322 @@
+import { logger } from "../../shared/logger";
+import { WorkflowSessionRepository } from "../../shared/workflow-session-repository";
+import type {
+  ArenaMessage,
+  FacilitatorDecision,
+  Phase2Error,
+  Phase2Step,
+  WorkflowSession,
+} from "../../shared/workflow-types";
+import type { FacilitatorAgent, JudgeAgent, RoleAgent } from "./agents";
+
+type Phase2ServiceOptions = {
+  maxTurnsPerPoint?: number;
+  maxTotalTurns?: number;
+  maxRetryCount?: number;
+};
+
+const FACILITATOR_ID = "facilitator";
+const FACILITATOR_NAME = "ファシリテーター";
+const JUDGE_ID = "judge";
+const JUDGE_NAME = "Judge";
+
+export class Phase2Service {
+  private readonly maxTurnsPerPoint: number;
+  private readonly maxTotalTurns: number;
+  private readonly maxRetryCount: number;
+  private readonly activeSessions = new Set<string>();
+
+  constructor(
+    private readonly repository: WorkflowSessionRepository,
+    private readonly facilitatorAgent: FacilitatorAgent,
+    private readonly roleAgent: RoleAgent,
+    private readonly judgeAgent: JudgeAgent,
+    options: Phase2ServiceOptions = {},
+  ) {
+    this.maxTurnsPerPoint = options.maxTurnsPerPoint ?? 6;
+    this.maxTotalTurns = options.maxTotalTurns ?? 15;
+    this.maxRetryCount = options.maxRetryCount ?? 3;
+  }
+
+  getSession(sessionId: string) {
+    return this.repository.getSession(sessionId);
+  }
+
+  subscribe(
+    sessionId: string,
+    subscriber: Parameters<WorkflowSessionRepository["subscribe"]>[1],
+  ) {
+    return this.repository.subscribe(sessionId, subscriber);
+  }
+
+  getEventHistory(sessionId: string) {
+    return this.repository.getEventHistory(sessionId);
+  }
+
+  start(sessionId: string) {
+    const session = this.requireRunnableSession(sessionId);
+    if (session.phase2.status !== "idle") {
+      throw new Error("phase2_not_idle");
+    }
+    this.ensureUnlocked(sessionId);
+    this.repository.markPhase2Started(sessionId);
+    this.activeSessions.add(sessionId);
+    void this.run(sessionId);
+  }
+
+  retry(sessionId: string) {
+    const session = this.repository.getSession(sessionId);
+    if (!session) {
+      throw new Error("session_not_found");
+    }
+    if (session.phase2.status !== "failed") {
+      throw new Error("phase2_not_failed");
+    }
+    this.ensureUnlocked(sessionId);
+    this.repository.resetCurrentPointForRetry(sessionId);
+    this.activeSessions.add(sessionId);
+    void this.run(sessionId);
+  }
+
+  private async run(sessionId: string) {
+    try {
+      while (true) {
+        const session = this.requireRunnableSession(sessionId);
+        const result = session.phase1.result;
+        if (!result) {
+          throw new Error("session_phase1_not_completed");
+        }
+
+        if (
+          session.phase2.currentDiscussionPointIndex >=
+          result.discussionPoints.length
+        ) {
+          this.repository.completePhase2(sessionId, "resolved");
+          return;
+        }
+
+        if (session.phase2.totalTurnCount >= this.maxTotalTurns) {
+          this.finishWithCircuitBreaker(session);
+          return;
+        }
+
+        const currentPoint =
+          result.discussionPoints[session.phase2.currentDiscussionPointIndex];
+        if (!currentPoint) {
+          this.repository.completePhase2(sessionId, "resolved");
+          return;
+        }
+
+        if (session.phase2.currentTurnCount >= this.maxTurnsPerPoint) {
+          this.repository.setPointStatus(
+            sessionId,
+            currentPoint.id,
+            "forced_stop",
+          );
+          this.finishWithCircuitBreaker(session);
+          return;
+        }
+
+        const turnNumber = session.phase2.totalTurnCount + 1;
+        const facilitatorDecision = await this.executeWithRetry(
+          "facilitator",
+          sessionId,
+          async () => {
+            const decision = await this.facilitatorAgent.decide({
+              topic: session.topic,
+              requirements: result.requirements,
+              currentDiscussionPoint: currentPoint,
+              roles: result.roles,
+              messages: session.phase2.messages,
+            });
+            this.validateFacilitatorDecision(
+              decision,
+              currentPoint.id,
+              result.roles.map((role) => role.id),
+            );
+            return decision;
+          },
+        );
+        this.repository.appendArenaMessage(sessionId, {
+          speakerType: "facilitator",
+          speakerId: FACILITATOR_ID,
+          speakerName: FACILITATOR_NAME,
+          discussionPointId: currentPoint.id,
+          content: facilitatorDecision.message,
+          turnNumber,
+        });
+
+        const roleMessage = await this.executeWithRetry(
+          "role",
+          sessionId,
+          async () => {
+            const role = result.roles.find(
+              (candidate) => candidate.id === facilitatorDecision.targetRoleId,
+            );
+            if (!role) {
+              throw new Error("target_role_not_found");
+            }
+            return this.roleAgent.speak({
+              topic: session.topic,
+              requirements: result.requirements,
+              currentDiscussionPoint: currentPoint,
+              role,
+              facilitatorMessage: facilitatorDecision.message,
+              messages:
+                this.repository.getSession(sessionId)?.phase2.messages ?? [],
+            });
+          },
+        );
+        const role = result.roles.find(
+          (candidate) => candidate.id === facilitatorDecision.targetRoleId,
+        );
+        if (!role) {
+          throw new Error("target_role_not_found");
+        }
+        this.repository.appendArenaMessage(sessionId, {
+          speakerType: "role",
+          speakerId: role.id,
+          speakerName: role.name,
+          discussionPointId: currentPoint.id,
+          content: roleMessage,
+          turnNumber,
+        });
+
+        const judgeDecision = await this.executeWithRetry(
+          "judge",
+          sessionId,
+          async () =>
+            this.judgeAgent.decide({
+              topic: session.topic,
+              requirements: result.requirements,
+              currentDiscussionPoint: currentPoint,
+              roles: result.roles,
+              messages:
+                this.repository.getSession(sessionId)?.phase2.messages ?? [],
+            }),
+        );
+        this.repository.recordJudgeDecision(sessionId, {
+          discussionPointId: currentPoint.id,
+          isResolved: judgeDecision.isResolved,
+          reason: judgeDecision.reason,
+          turnNumber,
+        });
+
+        const nextCurrentTurnCount = session.phase2.currentTurnCount + 1;
+        const nextTotalTurnCount = session.phase2.totalTurnCount + 1;
+
+        if (judgeDecision.isResolved) {
+          this.repository.setPointStatus(
+            sessionId,
+            currentPoint.id,
+            "resolved",
+          );
+          this.repository.updatePhase2Counters(sessionId, {
+            currentDiscussionPointIndex:
+              session.phase2.currentDiscussionPointIndex + 1,
+            currentTurnCount: 0,
+            totalTurnCount: nextTotalTurnCount,
+          });
+          continue;
+        }
+
+        this.repository.updatePhase2Counters(sessionId, {
+          currentTurnCount: nextCurrentTurnCount,
+          totalTurnCount: nextTotalTurnCount,
+        });
+      }
+    } catch (error) {
+      const phase2Error =
+        error instanceof Phase2StepError
+          ? error.detail
+          : {
+              step: "judge" as const,
+              message: error instanceof Error ? error.message : "Phase2 failed",
+              retryCount: this.maxRetryCount,
+            };
+      logger.error("Phase2 processing failed", {
+        sessionId,
+        message: phase2Error.message,
+      });
+      if (phase2Error.message === "phase2_already_running") {
+        return;
+      }
+      this.repository.failPhase2(sessionId, phase2Error);
+    } finally {
+      this.repository.setPhase2Processing(sessionId, false);
+      this.activeSessions.delete(sessionId);
+      logger.info("Phase2 processing finished", {
+        sessionId,
+      });
+    }
+  }
+
+  private finishWithCircuitBreaker(session: WorkflowSession) {
+    this.repository.completePhase2(session.id, "circuit_breaker");
+  }
+
+  private ensureUnlocked(sessionId: string) {
+    if (this.activeSessions.has(sessionId)) {
+      throw new Error("phase2_already_running");
+    }
+  }
+
+  private requireRunnableSession(sessionId: string) {
+    const session = this.repository.getSession(sessionId);
+    if (!session) {
+      throw new Error("session_not_found");
+    }
+    if (session.phase1.status !== "completed" || !session.phase1.result) {
+      throw new Error("session_phase1_not_completed");
+    }
+    return session;
+  }
+
+  private validateFacilitatorDecision(
+    decision: FacilitatorDecision,
+    discussionPointId: string,
+    roleIds: string[],
+  ) {
+    if (decision.discussionPointId !== discussionPointId) {
+      throw new Error("facilitator_discussion_point_mismatch");
+    }
+    if (!roleIds.includes(decision.targetRoleId)) {
+      throw new Error("facilitator_role_not_found");
+    }
+  }
+
+  private async executeWithRetry<T>(
+    step: Phase2Step,
+    sessionId: string,
+    operation: () => Promise<T>,
+  ) {
+    let lastError: Error | null = null;
+
+    for (let attempt = 1; attempt <= this.maxRetryCount; attempt += 1) {
+      try {
+        return await operation();
+      } catch (error) {
+        lastError = error instanceof Error ? error : new Error(String(error));
+        logger.error("Phase2 step failed", {
+          sessionId,
+          step,
+          attempt,
+          message: lastError.message,
+        });
+      }
+    }
+
+    const finalError: Phase2Error = {
+      step,
+      message: `${step} の処理が ${this.maxRetryCount} 回失敗しました: ${lastError?.message ?? "unknown_error"}`,
+      retryCount: this.maxRetryCount,
+    };
+    throw new Phase2StepError(finalError);
+  }
+}
+
+class Phase2StepError extends Error {
+  constructor(readonly detail: Phase2Error) {
+    super(detail.message);
+  }
+}

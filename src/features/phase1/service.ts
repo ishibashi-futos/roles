@@ -1,6 +1,6 @@
-import type { RequirementAgent } from "./requirement-agent";
 import { logger } from "../../shared/logger";
-import { Phase1SessionStore } from "./session-store";
+import { WorkflowSessionRepository } from "../../shared/workflow-session-repository";
+import type { RequirementAgent } from "./requirement-agent";
 
 type Phase1ServiceOptions = {
   maxUserReplyCount?: number;
@@ -10,7 +10,7 @@ export class Phase1Service {
   private readonly maxUserReplyCount: number;
 
   constructor(
-    private readonly store: Phase1SessionStore,
+    private readonly store: WorkflowSessionRepository,
     private readonly requirementAgent: RequirementAgent,
     options: Phase1ServiceOptions = {},
   ) {
@@ -18,7 +18,7 @@ export class Phase1Service {
   }
 
   createSession(topic: string) {
-    const session = this.store.create(topic);
+    const session = this.store.createSession(topic);
     logger.info("Phase1 session created", {
       sessionId: session.id,
       topic,
@@ -28,21 +28,21 @@ export class Phase1Service {
   }
 
   submitReply(sessionId: string, message: string) {
-    const session = this.store.get(sessionId);
+    const session = this.store.getSession(sessionId);
 
     if (!session) {
       throw new Error("session_not_found");
     }
 
-    if (session.status !== "collecting_requirements") {
+    if (session.phase1.status !== "collecting_requirements") {
       throw new Error("session_not_collecting");
     }
 
-    if (session.isProcessing) {
+    if (session.phase1.isProcessing) {
       throw new Error("session_processing");
     }
 
-    this.store.appendUserMessage(sessionId, message);
+    this.store.appendPhase1UserMessage(sessionId, message);
     logger.info("Phase1 reply accepted", {
       sessionId,
       messageLength: message.length,
@@ -51,44 +51,44 @@ export class Phase1Service {
   }
 
   getSession(sessionId: string) {
-    return this.store.get(sessionId);
+    return this.store.getSession(sessionId);
   }
 
   subscribe(
     sessionId: string,
-    subscriber: Parameters<Phase1SessionStore["subscribe"]>[1],
+    subscriber: Parameters<WorkflowSessionRepository["subscribe"]>[1],
   ) {
     return this.store.subscribe(sessionId, subscriber);
   }
 
   private async process(sessionId: string) {
-    const session = this.store.get(sessionId);
-    if (!session || session.isProcessing) {
+    const session = this.store.getSession(sessionId);
+    if (!session || session.phase1.isProcessing) {
       return;
     }
 
     logger.info("Phase1 processing started", {
       sessionId,
-      status: session.status,
-      userReplyCount: session.userReplyCount,
+      status: session.phase1.status,
+      userReplyCount: session.phase1.userReplyCount,
     });
-    this.store.setProcessing(sessionId, true);
+    this.store.setPhase1Processing(sessionId, true);
 
     try {
-      const latest = this.store.get(sessionId);
+      const latest = this.store.getSession(sessionId);
       if (!latest) {
         return;
       }
 
       const decision = await this.requirementAgent.decide({
         topic: latest.topic,
-        messages: latest.messages,
-        userReplyCount: latest.userReplyCount,
+        messages: latest.phase1.messages,
+        userReplyCount: latest.phase1.userReplyCount,
         maxUserReplyCount: this.maxUserReplyCount,
       });
 
       if (decision.kind === "ask") {
-        this.store.appendAssistantMessage(sessionId, decision.message);
+        this.store.appendPhase1AssistantMessage(sessionId, decision.message);
         logger.info("Phase1 agent requested more information", {
           sessionId,
           message: decision.message,
@@ -96,7 +96,7 @@ export class Phase1Service {
         return;
       }
 
-      this.store.complete(sessionId, decision.message, decision.result);
+      this.store.completePhase1(sessionId, decision.message, decision.result);
       logger.info("Phase1 requirements completed", {
         sessionId,
         roleCount: decision.result.roles.length,
@@ -111,11 +111,11 @@ export class Phase1Service {
         sessionId,
         message,
       });
-      this.store.fail(sessionId, message);
+      this.store.failPhase1(sessionId, message);
     } finally {
-      const latest = this.store.get(sessionId);
+      const latest = this.store.getSession(sessionId);
       if (latest) {
-        this.store.setProcessing(sessionId, false);
+        this.store.setPhase1Processing(sessionId, false);
       }
       logger.info("Phase1 processing finished", {
         sessionId,

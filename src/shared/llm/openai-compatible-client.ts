@@ -37,6 +37,17 @@ export class OpenAiCompatibleClient {
     messages: OpenAiChatMessage[],
     responseFormat: OpenAiResponseFormat,
   ) {
+    return this.createChatCompletion(messages, responseFormat);
+  }
+
+  async createTextChatCompletion(messages: OpenAiChatMessage[]) {
+    return this.createChatCompletion(messages, { type: "text" });
+  }
+
+  private async createChatCompletion(
+    messages: OpenAiChatMessage[],
+    responseFormat: OpenAiResponseFormat,
+  ) {
     const url = `${this.baseUrl}/chat/completions`;
     const body = {
       model: this.model,

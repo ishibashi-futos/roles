@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { createPhase1App } from "./routes";
 import type { RequirementAgent } from "./requirement-agent";
 import { parseRequirementAgentDecision } from "./requirement-agent";
+import { WorkflowSessionRepository } from "../../shared/workflow-session-repository";
 
 const completedResult = {
   requirements: {
@@ -51,6 +52,11 @@ const completedResult = {
   ],
 };
 
+const createTestRepository = () =>
+  new WorkflowSessionRepository(
+    `/tmp/roles-phase1-${crypto.randomUUID()}.sqlite`,
+  );
+
 describe("parseRequirementAgentDecision", () => {
   test("complete の JSON を解釈できる", () => {
     const result = parseRequirementAgentDecision(
@@ -82,7 +88,10 @@ describe("phase1 routes", () => {
       },
     };
 
-    const app = createPhase1App({ requirementAgent: agent });
+    const app = createPhase1App({
+      requirementAgent: agent,
+      repository: createTestRepository(),
+    });
     const response = await app.request("/api/phase1/sessions", {
       method: "POST",
       headers: {
@@ -117,7 +126,10 @@ describe("phase1 routes", () => {
       },
     };
 
-    const app = createPhase1App({ requirementAgent: agent });
+    const app = createPhase1App({
+      requirementAgent: agent,
+      repository: createTestRepository(),
+    });
     const createResponse = await app.request("/api/phase1/sessions", {
       method: "POST",
       headers: {
@@ -164,7 +176,10 @@ describe("phase1 routes", () => {
       },
     };
 
-    const app = createPhase1App({ requirementAgent: agent });
+    const app = createPhase1App({
+      requirementAgent: agent,
+      repository: createTestRepository(),
+    });
     const createResponse = await app.request("/api/phase1/sessions", {
       method: "POST",
       headers: {

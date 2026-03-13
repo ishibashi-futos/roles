@@ -3,19 +3,22 @@ import { streamSSE } from "hono/streaming";
 import type { Child } from "hono/jsx";
 import { jsxRenderer } from "hono/jsx-renderer";
 import { logger } from "../../shared/logger";
+import { WorkflowSessionRepository } from "../../shared/workflow-session-repository";
+import type { WorkflowSession } from "../../shared/workflow-types";
 import type { RequirementAgent } from "./requirement-agent";
 import { createRequirementAgentFromEnv } from "./requirement-agent";
-import { Phase1SessionStore } from "./session-store";
 import { Phase1Service } from "./service";
-import type {
-  Phase1Result,
-  RequirementMessage,
-  RequirementSession,
-} from "./types";
+import type { Phase1Result, RequirementMessage } from "./types";
 
 type CreatePhase1AppOptions = {
   requirementAgent?: RequirementAgent;
+  repository?: WorkflowSessionRepository;
   maxUserReplyCount?: number;
+};
+
+type RegisterPhase1RoutesOptions = {
+  service: Phase1Service;
+  repository: WorkflowSessionRepository;
 };
 
 const renderMessages = (messages: RequirementMessage[]) =>
@@ -37,7 +40,32 @@ const renderMessages = (messages: RequirementMessage[]) =>
     </article>
   ));
 
-const renderResult = (result: Phase1Result | null): Child => {
+const KeyValueList = ({ title, items }: { title: string; items: string[] }) => (
+  <section>
+    <p class="text-sm font-semibold text-slate-900">{title}</p>
+    <ul class="mt-2 space-y-2 text-sm leading-6 text-slate-600">
+      {items.map((item) => (
+        <li class="rounded-xl bg-white/80 px-3 py-2">{item}</li>
+      ))}
+    </ul>
+  </section>
+);
+
+const renderDiscussionStartButton = (sessionId: string) => (
+  <div class="mt-6 flex justify-end">
+    <a
+      href={`/arena/${sessionId}`}
+      class="rounded-full bg-slate-950 px-5 py-3 text-sm font-semibold text-white transition hover:bg-slate-800"
+    >
+      議論を開始
+    </a>
+  </div>
+);
+
+const renderResult = (
+  result: Phase1Result | null,
+  sessionId: string | null,
+): Child => {
   if (!result) {
     return (
       <section class="rounded-3xl border border-dashed border-slate-300 bg-white/70 p-6">
@@ -107,23 +135,13 @@ const renderResult = (result: Phase1Result | null): Child => {
             </section>
           ))}
         </div>
+        {sessionId ? renderDiscussionStartButton(sessionId) : null}
       </article>
     </section>
   );
 };
 
-const KeyValueList = ({ title, items }: { title: string; items: string[] }) => (
-  <section>
-    <p class="text-sm font-semibold text-slate-900">{title}</p>
-    <ul class="mt-2 space-y-2 text-sm leading-6 text-slate-600">
-      {items.map((item) => (
-        <li class="rounded-xl bg-white/80 px-3 py-2">{item}</li>
-      ))}
-    </ul>
-  </section>
-);
-
-const RootPage = ({ session }: { session: RequirementSession | null }) => (
+const RootPage = ({ session }: { session: WorkflowSession | null }) => (
   <main class="min-h-screen bg-[radial-gradient(circle_at_top,_#fef3c7,_#f8fafc_45%,_#e2e8f0)] px-4 py-10 text-slate-900">
     <div class="mx-auto grid max-w-7xl gap-6 lg:grid-cols-[1.05fr_0.95fr]">
       <section class="rounded-[32px] bg-slate-950 p-8 text-white shadow-2xl shadow-slate-950/20">
@@ -175,13 +193,15 @@ const RootPage = ({ session }: { session: RequirementSession | null }) => (
             </span>
           </div>
           <div id="messages" class="mt-4 space-y-3">
-            {session ? renderMessages(session.messages) : null}
+            {session ? renderMessages(session.phase1.messages) : null}
           </div>
         </section>
       </section>
 
       <section>
-        <div id="result-panel">{renderResult(session?.result ?? null)}</div>
+        <div id="result-panel">
+          {renderResult(session?.phase1.result ?? null, session?.id ?? null)}
+        </div>
       </section>
     </div>
   </main>
@@ -247,6 +267,9 @@ const renderList = (title, items) => \`
 \`;
 
 const renderResult = (result) => {
+  const startButton = state.sessionId
+    ? \`<div class="mt-6 flex justify-end"><a href="/arena/\${state.sessionId}" class="rounded-full bg-slate-950 px-5 py-3 text-sm font-semibold text-white transition hover:bg-slate-800">議論を開始</a></div>\`
+    : "";
   resultPanel.innerHTML = \`
     <section class="space-y-6">
       <article class="rounded-3xl bg-slate-950 p-6 text-white">
@@ -285,6 +308,7 @@ const renderResult = (result) => {
             </section>
           \`).join("")}
         </div>
+        \${startButton}
       </article>
     </section>
   \`;
@@ -454,14 +478,11 @@ const createFallbackAgent = (): RequirementAgent => ({
   },
 });
 
-export const createPhase1App = (options: CreatePhase1AppOptions = {}) => {
-  const app = new Hono();
-  const requirementAgent =
-    options.requirementAgent ?? safelyCreateRequirementAgentFromEnv();
-  const store = new Phase1SessionStore();
-  const service = new Phase1Service(store, requirementAgent, {
-    maxUserReplyCount: options.maxUserReplyCount,
-  });
+export const registerPhase1Routes = (
+  app: Hono,
+  options: RegisterPhase1RoutesOptions,
+) => {
+  const { service, repository } = options;
 
   app.use(
     "*",
@@ -570,14 +591,22 @@ export const createPhase1App = (options: CreatePhase1AppOptions = {}) => {
 
       await send("ready", { sessionId });
 
-      for (const event of store.getEventHistory(sessionId)) {
+      for (const event of repository.getEventHistory(sessionId)) {
+        if (
+          event.event === "phase2_started" ||
+          event.event === "arena_message" ||
+          event.event === "judge_result" ||
+          event.event === "phase2_completed"
+        ) {
+          continue;
+        }
         await send(event.event, event.data, event.id);
       }
 
       const latestSession = service.getSession(sessionId);
       if (
         !latestSession ||
-        latestSession.status !== "collecting_requirements"
+        latestSession.phase1.status !== "collecting_requirements"
       ) {
         return;
       }
@@ -588,6 +617,15 @@ export const createPhase1App = (options: CreatePhase1AppOptions = {}) => {
       });
 
       const unsubscribe = service.subscribe(sessionId, (event) => {
+        if (
+          event.event === "phase2_started" ||
+          event.event === "arena_message" ||
+          event.event === "judge_result" ||
+          event.event === "phase2_completed"
+        ) {
+          return;
+        }
+
         void (async () => {
           await send(event.event, event.data, event.id);
           if (
@@ -614,6 +652,21 @@ export const createPhase1App = (options: CreatePhase1AppOptions = {}) => {
 
       await closed;
     });
+  });
+};
+
+export const createPhase1App = (options: CreatePhase1AppOptions = {}) => {
+  const app = new Hono();
+  const requirementAgent =
+    options.requirementAgent ?? safelyCreateRequirementAgentFromEnv();
+  const repository = options.repository ?? new WorkflowSessionRepository();
+  const service = new Phase1Service(repository, requirementAgent, {
+    maxUserReplyCount: options.maxUserReplyCount,
+  });
+
+  registerPhase1Routes(app, {
+    service,
+    repository,
   });
 
   return app;
