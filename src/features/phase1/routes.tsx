@@ -199,6 +199,86 @@ const getSessionPrimaryLink = (session: WorkflowSession) => {
   return `/sessions/${session.id}`;
 };
 
+const getSessionDatasetStatus = (session: WorkflowSession) => {
+  if (session.phase3.status === "completed") {
+    return "phase3_completed";
+  }
+  if (session.phase3.status === "running") {
+    return "phase3_running";
+  }
+  if (session.phase2.status === "running") {
+    return "phase2_running";
+  }
+  return session.phase1.status;
+};
+
+const homeClientScript = `
+const summaryTotal = document.getElementById("summary-total");
+const summaryInProgress = document.getElementById("summary-in-progress");
+const summaryCompleted = document.getElementById("summary-completed");
+
+const updateSummary = () => {
+  const cards = [...document.querySelectorAll("[data-session-card]")];
+  const total = cards.length;
+  const inProgress = cards.filter((card) => {
+    const status = card.dataset.sessionStatus;
+    return (
+      status === "collecting_requirements" ||
+      status === "phase2_running" ||
+      status === "phase3_running"
+    );
+  }).length;
+  const completed = cards.filter(
+    (card) => card.dataset.sessionStatus === "phase3_completed",
+  ).length;
+
+  summaryTotal.textContent = String(total);
+  summaryInProgress.textContent = String(inProgress);
+  summaryCompleted.textContent = String(completed);
+
+  const emptyState = document.getElementById("sessions-empty");
+  const list = document.getElementById("sessions-list");
+  emptyState?.classList.toggle("hidden", total !== 0);
+  list?.classList.toggle("hidden", total === 0);
+};
+
+document.querySelectorAll("[data-delete-session-button]").forEach((button) => {
+  button.addEventListener("click", async (event) => {
+    event.preventDefault();
+
+    const sessionId = button.dataset.sessionId;
+    if (!sessionId) {
+      return;
+    }
+
+    const confirmed = window.confirm("このセッションを削除します。元に戻せません。");
+    if (!confirmed) {
+      return;
+    }
+
+    button.disabled = true;
+    const originalLabel = button.textContent;
+    button.textContent = "削除中...";
+
+    const response = await fetch("/api/sessions/" + sessionId, {
+      method: "DELETE",
+    });
+
+    if (!response.ok) {
+      button.disabled = false;
+      button.textContent = originalLabel;
+      window.alert("セッションの削除に失敗しました。");
+      return;
+    }
+
+    document.querySelector('[data-session-card="' + sessionId + '"]')?.remove();
+    updateSummary();
+  });
+});
+
+updateSummary();
+`;
+
 const HomePage = ({ sessions }: { sessions: WorkflowSession[] }) => (
   <main class="min-h-screen bg-[radial-gradient(circle_at_top_left,_rgba(59,130,246,0.22),_transparent_30%),radial-gradient(circle_at_top_right,_rgba(16,185,129,0.18),_transparent_28%),linear-gradient(180deg,#f7fbff_0%,#eef4ff_52%,#f8fafc_100%)] px-4 py-10 text-slate-900">
     <div class="mx-auto max-w-7xl space-y-6">
@@ -234,13 +314,19 @@ const HomePage = ({ sessions }: { sessions: WorkflowSession[] }) => (
           <div class="mt-5 grid gap-4 sm:grid-cols-3">
             <section class="rounded-2xl border border-slate-200/80 bg-slate-50 px-4 py-5">
               <p class="text-sm text-slate-500">総セッション数</p>
-              <p class="mt-2 text-3xl font-semibold text-slate-900">
+              <p
+                id="summary-total"
+                class="mt-2 text-3xl font-semibold text-slate-900"
+              >
                 {sessions.length}
               </p>
             </section>
             <section class="rounded-2xl border border-slate-200/80 bg-slate-50 px-4 py-5">
               <p class="text-sm text-slate-500">進行中</p>
-              <p class="mt-2 text-3xl font-semibold text-slate-900">
+              <p
+                id="summary-in-progress"
+                class="mt-2 text-3xl font-semibold text-slate-900"
+              >
                 {
                   sessions.filter(
                     (session) =>
@@ -253,7 +339,10 @@ const HomePage = ({ sessions }: { sessions: WorkflowSession[] }) => (
             </section>
             <section class="rounded-2xl border border-slate-200/80 bg-slate-50 px-4 py-5">
               <p class="text-sm text-slate-500">レポート完了</p>
-              <p class="mt-2 text-3xl font-semibold text-slate-900">
+              <p
+                id="summary-completed"
+                class="mt-2 text-3xl font-semibold text-slate-900"
+              >
                 {
                   sessions.filter(
                     (session) => session.phase3.status === "completed",
@@ -278,7 +367,10 @@ const HomePage = ({ sessions }: { sessions: WorkflowSession[] }) => (
         </div>
 
         {sessions.length === 0 ? (
-          <section class="mt-6 rounded-[28px] border border-dashed border-slate-300 bg-slate-50 px-6 py-12 text-center">
+          <section
+            id="sessions-empty"
+            class="mt-6 rounded-[28px] border border-dashed border-slate-300 bg-slate-50 px-6 py-12 text-center"
+          >
             <p class="text-base font-medium text-slate-700">
               まだセッションはありません。
             </p>
@@ -287,32 +379,48 @@ const HomePage = ({ sessions }: { sessions: WorkflowSession[] }) => (
             </p>
           </section>
         ) : (
-          <div class="mt-6 grid gap-4">
+          <div id="sessions-list" class="mt-6 grid gap-4">
             {sessions.map((session) => (
-              <a
-                href={getSessionPrimaryLink(session)}
-                class="block rounded-[28px] border border-slate-200/80 bg-[linear-gradient(180deg,#ffffff_0%,#f8fbff_100%)] p-6 shadow-sm transition hover:-translate-y-0.5 hover:shadow-lg"
+              <article
+                data-session-card={session.id}
+                data-session-status={getSessionDatasetStatus(session)}
+                class="rounded-[28px] border border-slate-200/80 bg-[linear-gradient(180deg,#ffffff_0%,#f8fbff_100%)] shadow-sm transition hover:-translate-y-0.5 hover:shadow-lg"
               >
-                <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-                  <div class="min-w-0">
-                    <div class="flex flex-wrap items-center gap-3">
-                      <span class="rounded-full border border-sky-200 bg-sky-50 px-3 py-1 text-xs font-semibold text-sky-700">
-                        {getSessionStatusLabel(session)}
-                      </span>
-                      <span class="text-xs text-slate-400">{session.id}</span>
+                <a
+                  href={getSessionPrimaryLink(session)}
+                  class="block cursor-pointer p-6"
+                >
+                  <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                    <div class="min-w-0">
+                      <div class="flex flex-wrap items-center gap-3">
+                        <span class="rounded-full border border-sky-200 bg-sky-50 px-3 py-1 text-xs font-semibold text-sky-700">
+                          {getSessionStatusLabel(session)}
+                        </span>
+                        <span class="text-xs text-slate-400">{session.id}</span>
+                      </div>
+                      <h3 class="mt-3 text-lg font-semibold text-slate-900">
+                        {session.topic}
+                      </h3>
                     </div>
-                    <h3 class="mt-3 text-lg font-semibold text-slate-900">
-                      {session.topic}
-                    </h3>
+                    <div class="shrink-0 text-sm text-slate-500">
+                      <p>更新: {formatTimestamp(session.updatedAt)}</p>
+                      <p class="mt-1">
+                        作成: {formatTimestamp(session.createdAt)}
+                      </p>
+                    </div>
                   </div>
-                  <div class="shrink-0 text-sm text-slate-500">
-                    <p>更新: {formatTimestamp(session.updatedAt)}</p>
-                    <p class="mt-1">
-                      作成: {formatTimestamp(session.createdAt)}
-                    </p>
-                  </div>
+                </a>
+                <div class="flex justify-end px-6 pb-6">
+                  <button
+                    type="button"
+                    data-delete-session-button="true"
+                    data-session-id={session.id}
+                    class="rounded-full border border-rose-200 bg-rose-50 px-4 py-2 text-sm font-medium text-rose-700 transition hover:bg-rose-100"
+                  >
+                    削除
+                  </button>
                 </div>
-              </a>
+              </article>
             ))}
           </div>
         )}
@@ -680,7 +788,12 @@ export const registerPhase1Routes = (
 
   app.get("/", (c) => {
     const sessions = repository.listSessions();
-    return c.render(<HomePage sessions={sessions} />);
+    return c.render(
+      <>
+        <HomePage sessions={sessions} />
+        <script dangerouslySetInnerHTML={{ __html: homeClientScript }} />
+      </>,
+    );
   });
 
   app.get("/sessions/new", (c) => {
@@ -766,6 +879,24 @@ export const registerPhase1Routes = (
       }
       return c.json({ message: "failed to process reply." }, 500);
     }
+  });
+
+  app.delete("/api/sessions/:sessionId", (c) => {
+    const sessionId = c.req.param("sessionId");
+    const deleted = repository.deleteSession(sessionId);
+
+    if (!deleted) {
+      logger.error("Session deletion failed", {
+        sessionId,
+        reason: "session_not_found",
+      });
+      return c.json({ message: "session not found." }, 404);
+    }
+
+    logger.info("Session deleted", {
+      sessionId,
+    });
+    return c.body(null, 204);
   });
 
   app.get("/api/phase1/sessions/:sessionId/events", async (c) => {

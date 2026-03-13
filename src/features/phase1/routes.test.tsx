@@ -116,6 +116,7 @@ describe("phase1 routes", () => {
     expect(html).toContain('alt="roles ロゴ"');
     expect(html).toContain("新規セッションを開始");
     expect(html).toContain("過去セッション");
+    expect(html).toContain("削除");
   });
 
   test("新規セッション画面を表示できる", async () => {
@@ -266,6 +267,23 @@ describe("phase1 routes", () => {
     const html = await response.text();
     expect(html).toContain(`Session: ${created.sessionId}`);
     expect(html).toContain("対象ユーザーを教えてください。");
+  });
+
+  test("セッションを削除できる", async () => {
+    const repository = createTestRepository();
+    const app = createPhase1App({
+      repository,
+    });
+
+    const created = repository.createSession("営業行動をデータ化したい");
+
+    const response = await app.request(`/api/sessions/${created.id}`, {
+      method: "DELETE",
+    });
+
+    expect(response.status).toBe(204);
+    expect(repository.getSession(created.id)).toBeNull();
+    expect(repository.getEventHistory(created.id)).toEqual([]);
   });
 
   test("エージェント失敗時は error イベントを返す", async () => {

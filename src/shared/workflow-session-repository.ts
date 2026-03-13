@@ -265,6 +265,20 @@ export class WorkflowSessionRepository {
     return rows.map(mapSession);
   }
 
+  deleteSession(sessionId: string) {
+    const session = this.getSession(sessionId);
+    if (!session) {
+      return false;
+    }
+
+    this.database
+      .query(`DELETE FROM session_events WHERE session_id = ?`)
+      .run(sessionId);
+    this.database.query(`DELETE FROM sessions WHERE id = ?`).run(sessionId);
+    this.subscribers.delete(sessionId);
+    return true;
+  }
+
   appendPhase1UserMessage(sessionId: string, content: string) {
     const session = this.requireSession(sessionId);
     session.phase1.messages.push({ role: "user", content });
