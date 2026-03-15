@@ -1,4 +1,5 @@
 import type { Child } from "hono/jsx";
+import { isDevelopmentRuntime } from "./dev-reload";
 
 type PageShellProps = {
   children: Child;
@@ -39,7 +40,10 @@ export const PageShell = ({
         }
       `}</style>
     </head>
-    <body class={bodyClassName}>{children}</body>
+    <body class={bodyClassName}>
+      {children}
+      {isDevelopmentRuntime() ? <script src="/dev-reload.js"></script> : null}
+    </body>
   </html>
 );
 

@@ -115,6 +115,46 @@ describe("output language", () => {
   });
 });
 
+describe("development reload", () => {
+  test("トップページに開発用リロードスクリプトを含む", async () => {
+    const app = createPhase1App({
+      repository: createTestRepository(),
+    });
+
+    const response = await app.request("/");
+    const html = await response.text();
+
+    expect(html).toContain('script src="/dev-reload.js"');
+  });
+
+  test("開発用サーバ状態 API を返す", async () => {
+    const app = createPhase1App({
+      repository: createTestRepository(),
+    });
+
+    const response = await app.request("/api/dev/server-state");
+    const payload = (await response.json()) as { bootId: string };
+
+    expect(response.status).toBe(200);
+    expect(payload.bootId).toBeString();
+    expect(response.headers.get("cache-control")).toContain("no-store");
+  });
+
+  test("開発用リロードスクリプトを静的配信する", async () => {
+    const app = createPhase1App({
+      repository: createTestRepository(),
+    });
+
+    const response = await app.request("/dev-reload.js");
+    const body = await response.text();
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-type")).toContain("javascript");
+    expect(body).toContain("/api/dev/server-state");
+    expect(body).toContain('window.location.replace("/")');
+  });
+});
+
 describe("phase1 routes", () => {
   test("トップページで favicon とホーム画面を表示する", async () => {
     const app = createPhase1App({

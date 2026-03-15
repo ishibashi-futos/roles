@@ -3,6 +3,7 @@ import { streamSSE } from "hono/streaming";
 import type { Child } from "hono/jsx";
 import { jsxRenderer } from "hono/jsx-renderer";
 import { BrandMark, PageShell } from "../../shared/branding";
+import { registerDevReloadRoutes } from "../../shared/dev-reload";
 import { logger } from "../../shared/logger";
 import { registerStaticAssetRoutes } from "../../shared/static-assets";
 import { WorkflowSessionRepository } from "../../shared/workflow-session-repository";
@@ -996,6 +997,7 @@ export const registerPhase1Routes = (
 export const createPhase1App = (options: CreatePhase1AppOptions = {}) => {
   const app = new Hono();
   registerStaticAssetRoutes(app);
+  registerDevReloadRoutes(app);
   const requirementAgent =
     options.requirementAgent ?? safelyCreateRequirementAgentFromEnv();
   const repository = options.repository ?? new WorkflowSessionRepository();

@@ -19,6 +19,7 @@ import {
 } from "./features/phase1/requirement-agent";
 import { Phase1Service } from "./features/phase1/service";
 import { logger } from "./shared/logger";
+import { registerDevReloadRoutes } from "./shared/dev-reload";
 import { registerStaticAssetRoutes } from "./shared/static-assets";
 import { WorkflowSessionRepository } from "./shared/workflow-session-repository";
 import type {
@@ -43,6 +44,7 @@ type CreateAppOptions = {
 export const createApp = (options: CreateAppOptions = {}) => {
   const app = new Hono();
   registerStaticAssetRoutes(app);
+  registerDevReloadRoutes(app);
   const repository = options.repository ?? new WorkflowSessionRepository();
   const requirementAgent =
     options.requirementAgent ?? safelyCreateRequirementAgentFromEnv();
