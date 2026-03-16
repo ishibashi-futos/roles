@@ -28,3 +28,29 @@
 ## Definition of Done(DoD)
 
 - `bun sanity` による、 format, typecheck, test の完了
+
+## CLI Mode補助スクリプト
+
+Agent から CLI Mode を実行するときは、原則として `scripts/roles-cli-agent.sh` を使う。
+
+- 既定でローカルのLM Studioを利用する環境変数を注入される
+- 入力言語は英語で行う
+- 実行は必ず逐次で行い、CLI Mode を並列起動しない
+- リポジトリのルートで実行される
+
+使用例:
+
+```bash
+scripts/roles-cli-agent.sh start --topic "Improve hiring quality" --wait
+scripts/roles-cli-agent.sh reply --session <sessionId> --message "More context" --wait
+scripts/roles-cli-agent.sh start-discussion --session <sessionId> --wait
+scripts/roles-cli-agent.sh report --session <sessionId> --wait
+scripts/roles-cli-agent.sh list
+scripts/roles-cli-agent.sh show --session <sessionId>
+```
+
+環境変数を一時的に上書きしたい場合:
+
+```bash
+OPENAI_MODEL=other-model scripts/roles-cli-agent.sh start --topic "..."
+```
