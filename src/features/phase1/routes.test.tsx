@@ -184,6 +184,12 @@ describe("phase1 routes", () => {
     const html = await response.text();
     expect(html).toContain("要件定義を開始");
     expect(html).toContain("ホームに戻る");
+    expect(html).toContain("message-state-hint");
+    expect(html).toContain("inputDisabledClassName");
+    expect(html).toContain("buttonDisabledClassName");
+    expect(html).toContain(
+      "要件定義役が回答を処理中です。応答が返るまで入力と送信はできません。",
+    );
   });
 
   test("icon.svg を静的配信できる", async () => {

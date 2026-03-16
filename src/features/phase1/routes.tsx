@@ -469,18 +469,21 @@ const SessionPage = ({ session }: { session: WorkflowSession | null }) => (
             id="message-input"
             name="message"
             rows={5}
-            class="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm leading-6 text-white outline-none transition focus:border-cyan-300"
+            class="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm leading-6 text-white outline-none transition focus:border-cyan-300 disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-slate-900/40 disabled:text-slate-400 disabled:opacity-100"
             placeholder="例: SIer 営業の行動データ化を進めるための要件を整理したい"
           />
           <button
             id="message-submit"
-            class="rounded-full bg-[linear-gradient(135deg,var(--color-blue),var(--color-green))] px-5 py-3 text-sm font-semibold text-slate-950 transition hover:opacity-90"
+            class="rounded-full bg-[linear-gradient(135deg,var(--color-blue),var(--color-green))] px-5 py-3 text-sm font-semibold text-slate-950 shadow-lg shadow-cyan-950/20 transition hover:opacity-90 disabled:cursor-not-allowed disabled:bg-slate-600 disabled:text-slate-300 disabled:shadow-none disabled:hover:opacity-100"
             type="submit"
           >
             要件定義を開始
           </button>
         </form>
 
+        <p id="message-state-hint" class="mt-3 text-xs text-slate-300">
+          入力可能です。内容を送信すると、要件定義役の応答が返るまで一時的にロックします。
+        </p>
         <p id="status-text" class="mt-4 text-sm text-cyan-200" />
 
         <section class="mt-8">
@@ -524,9 +527,18 @@ const messageForm = document.getElementById("message-form");
 const messageInput = document.getElementById("message-input");
 const messageInputLabel = document.getElementById("message-input-label");
 const messageSubmit = document.getElementById("message-submit");
+const messageStateHint = document.getElementById("message-state-hint");
 const messages = document.getElementById("messages");
 const statusText = document.getElementById("status-text");
 const resultPanel = document.getElementById("result-panel");
+const inputEnabledClassName =
+  "w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm leading-6 text-white outline-none transition focus:border-cyan-300";
+const inputDisabledClassName =
+  "w-full rounded-2xl border border-white/10 bg-slate-900/40 px-4 py-3 text-sm leading-6 text-slate-400 outline-none opacity-100 transition cursor-not-allowed";
+const buttonEnabledClassName =
+  "rounded-full bg-[linear-gradient(135deg,var(--color-blue),var(--color-green))] px-5 py-3 text-sm font-semibold text-slate-950 shadow-lg shadow-cyan-950/20 transition hover:opacity-90";
+const buttonDisabledClassName =
+  "rounded-full bg-slate-600 px-5 py-3 text-sm font-semibold text-slate-300 shadow-none transition cursor-not-allowed";
 
 const escapeHtml = (value) => value
   .replaceAll("&", "&amp;")
@@ -603,12 +615,26 @@ const renderResult = (result) => {
 };
 
 const updateInputMode = () => {
+  const setInputAvailability = (isDisabled, hintText) => {
+    messageInput.disabled = isDisabled;
+    messageSubmit.disabled = isDisabled;
+    messageInput.className = isDisabled
+      ? inputDisabledClassName
+      : inputEnabledClassName;
+    messageSubmit.className = isDisabled
+      ? buttonDisabledClassName
+      : buttonEnabledClassName;
+    messageStateHint.textContent = hintText;
+  };
+
   if (state.completed) {
     messageInputLabel.textContent = "完了";
     messageInput.placeholder = "要件定義は完了しました。";
     messageSubmit.textContent = "完了";
-    messageInput.disabled = true;
-    messageSubmit.disabled = true;
+    setInputAvailability(
+      true,
+      "要件定義は完了済みです。内容を確認して次の議論フェーズに進んでください。",
+    );
     return;
   }
 
@@ -616,16 +642,24 @@ const updateInputMode = () => {
     messageInputLabel.textContent = "テーマ";
     messageInput.placeholder = "例: SIer 営業の行動データ化を進めるための要件を整理したい";
     messageSubmit.textContent = "要件定義を開始";
-    messageInput.disabled = state.awaitingResponse;
-    messageSubmit.disabled = state.awaitingResponse;
+    setInputAvailability(
+      state.awaitingResponse,
+      state.awaitingResponse
+        ? "要件定義役がテーマを整理中です。応答が返るまで入力と送信はできません。"
+        : "入力可能です。内容を送信すると、要件定義役の応答が返るまで一時的にロックします。",
+    );
     return;
   }
 
   messageInputLabel.textContent = "追加回答";
   messageInput.placeholder = "要件定義役から質問が返ってきたら、ここに回答を入力";
   messageSubmit.textContent = "回答を送信";
-  messageInput.disabled = state.awaitingResponse;
-  messageSubmit.disabled = state.awaitingResponse;
+  setInputAvailability(
+    state.awaitingResponse,
+    state.awaitingResponse
+      ? "要件定義役が回答を処理中です。応答が返るまで入力と送信はできません。"
+      : "入力可能です。要件定義役からの質問に回答してください。",
+  );
 };
 
 const closeEventSource = () => {
