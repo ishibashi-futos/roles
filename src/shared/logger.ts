@@ -23,15 +23,17 @@ const isTestRuntime = () => {
   );
 };
 
+const isSuppressed = () => process.env.ROLES_SUPPRESS_LOGS === "1";
+
 export const logger = {
   info(message: string, meta?: Record<string, unknown>) {
-    if (isTestRuntime()) {
+    if (isTestRuntime() || isSuppressed()) {
       return;
     }
     console.log(`[roles][INFO][${timestamp()}] ${message}${formatMeta(meta)}`);
   },
   error(message: string, meta?: Record<string, unknown>) {
-    if (isTestRuntime()) {
+    if (isTestRuntime() || isSuppressed()) {
       return;
     }
     console.error(
