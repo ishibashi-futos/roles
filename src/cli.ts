@@ -22,6 +22,8 @@ type ParsedArguments = {
   wait: boolean;
 };
 
+const DEFAULT_CLI_WAIT_TIMEOUT_MS = 90_000;
+
 const defaultIo: CliIo = {
   stdout: (message) => console.log(message),
   stderr: (message) => console.error(message),
@@ -46,6 +48,20 @@ const formatTimestamp = (value: string) =>
     hour: "2-digit",
     minute: "2-digit",
   }).format(new Date(value));
+
+const getCliWaitTimeoutMs = (env: NodeJS.ProcessEnv = process.env) => {
+  const rawValue = env.ROLES_CLI_WAIT_TIMEOUT_MS;
+  if (!rawValue) {
+    return DEFAULT_CLI_WAIT_TIMEOUT_MS;
+  }
+
+  const parsed = Number.parseInt(rawValue, 10);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    return DEFAULT_CLI_WAIT_TIMEOUT_MS;
+  }
+
+  return parsed;
+};
 
 const createUsageError = (message: string) => new Error(`usage:${message}`);
 
@@ -230,6 +246,7 @@ const printSessionDetail = (io: CliIo, session: WorkflowSession) => {
     `Phase1: ${session.phase1.status}`,
     `  messages: ${session.phase1.messages.length}`,
     `  userReplyCount: ${session.phase1.userReplyCount}`,
+    `  isProcessing: ${session.phase1.isProcessing ? "yes" : "no"}`,
   ];
 
   if (session.phase1.errorMessage) {
@@ -293,13 +310,33 @@ const waitForPhase1 = async (
   runtime: ReturnType<typeof createRuntime>,
   sessionId: string,
   initialMessageCount: number,
+  timeoutMs: number,
 ) => {
+  const startedAt = Date.now();
   while (true) {
     const latest = runtime.phase1Service.getSession(sessionId);
     if (latest && isPhase1Stable(latest, initialMessageCount)) {
       return latest;
     }
+    if (Date.now() - startedAt >= timeoutMs) {
+      throw new Error("phase1_wait_timeout");
+    }
     await Bun.sleep(500);
+  }
+};
+
+const printPhase1WaitTimeout = (io: CliIo, session: WorkflowSession | null) => {
+  io.stderr("Phase1 の待機がタイムアウトしました。");
+  if (!session) {
+    return;
+  }
+
+  io.stderr(`  status: ${session.phase1.status}`);
+  io.stderr(`  messages: ${session.phase1.messages.length}`);
+  io.stderr(`  userReplyCount: ${session.phase1.userReplyCount}`);
+  io.stderr(`  isProcessing: ${session.phase1.isProcessing ? "yes" : "no"}`);
+  if (session.phase1.errorMessage) {
+    io.stderr(`  error: ${session.phase1.errorMessage}`);
   }
 };
 
@@ -356,7 +393,8 @@ const waitForPhase3 = async (
     const latest = runtime.phase3Service.getSession(sessionId);
     if (
       latest &&
-      (latest.phase3.status === "completed" || latest.phase3.status === "failed")
+      (latest.phase3.status === "completed" ||
+        latest.phase3.status === "failed")
     ) {
       return latest;
     }
@@ -411,6 +449,7 @@ export const runCli = async (args: string[], options: RunCliOptions = {}) => {
         return await withRuntime(options, async (runtime, runtimeIo) => {
           const topic = requireValue(parsed.values, "topic", "--topic");
           const session = runtime.phase1Service.createSession(topic);
+          const waitTimeoutMs = getCliWaitTimeoutMs();
           runtimeIo.stdout(`sessionId: ${session.id}`);
           runtimeIo.stdout(`topic: ${session.topic}`);
           runtimeIo.stdout("状態: 要件定義を開始しました。");
@@ -419,11 +458,27 @@ export const runCli = async (args: string[], options: RunCliOptions = {}) => {
             return 0;
           }
 
-          const settled = await waitForPhase1(
-            runtime,
-            session.id,
-            session.phase1.messages.length,
-          );
+          let settled: WorkflowSession;
+          try {
+            settled = await waitForPhase1(
+              runtime,
+              session.id,
+              session.phase1.messages.length,
+              waitTimeoutMs,
+            );
+          } catch (error) {
+            const message =
+              error instanceof Error ? error.message : "unexpected_error";
+            if (message === "phase1_wait_timeout") {
+              printPhase1WaitTimeout(
+                runtimeIo,
+                runtime.phase1Service.getSession(session.id),
+              );
+              return 1;
+            }
+            runtimeIo.stderr(formatErrorMessage(message));
+            return 1;
+          }
           printPhase1Outcome(
             runtimeIo,
             settled,
@@ -442,6 +497,7 @@ export const runCli = async (args: string[], options: RunCliOptions = {}) => {
           const sessionId = requireValue(parsed.values, "session", "--session");
           const message = requireValue(parsed.values, "message", "--message");
           const current = runtime.phase1Service.getSession(sessionId);
+          const waitTimeoutMs = getCliWaitTimeoutMs();
           if (!current) {
             runtimeIo.stderr("対象のセッションが存在しません。");
             return 1;
@@ -462,11 +518,27 @@ export const runCli = async (args: string[], options: RunCliOptions = {}) => {
             return 0;
           }
 
-          const settled = await waitForPhase1(
-            runtime,
-            sessionId,
-            initialMessageCount + 1,
-          );
+          let settled: WorkflowSession;
+          try {
+            settled = await waitForPhase1(
+              runtime,
+              sessionId,
+              initialMessageCount + 1,
+              waitTimeoutMs,
+            );
+          } catch (error) {
+            const message =
+              error instanceof Error ? error.message : "unexpected_error";
+            if (message === "phase1_wait_timeout") {
+              printPhase1WaitTimeout(
+                runtimeIo,
+                runtime.phase1Service.getSession(sessionId),
+              );
+              return 1;
+            }
+            runtimeIo.stderr(formatErrorMessage(message));
+            return 1;
+          }
           printPhase1Outcome(runtimeIo, settled, initialMessageCount + 1);
           return settled.phase1.status === "failed" ? 1 : 0;
         });

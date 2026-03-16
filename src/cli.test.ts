@@ -1,5 +1,5 @@
 import "./test/silence-runtime";
-import { describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, test } from "bun:test";
 import { runCli } from "./cli";
 import type { RequirementAgent } from "./features/phase1/requirement-agent";
 import type {
@@ -157,6 +157,17 @@ const createTestRuntime = (
   });
 };
 
+const originalCliWaitTimeout = process.env.ROLES_CLI_WAIT_TIMEOUT_MS;
+
+afterEach(() => {
+  if (originalCliWaitTimeout === undefined) {
+    delete process.env.ROLES_CLI_WAIT_TIMEOUT_MS;
+    return;
+  }
+
+  process.env.ROLES_CLI_WAIT_TIMEOUT_MS = originalCliWaitTimeout;
+});
+
 describe("cli", () => {
   test("start --wait で追加質問を表示できる", async () => {
     const runtime = createTestRuntime();
@@ -297,5 +308,47 @@ describe("cli", () => {
     expect(stderr.join("\n")).toContain(
       "--wait cannot be used with this command.",
     );
+  });
+
+  test("show で Phase1 の processing 状態を表示できる", async () => {
+    const runtime = createTestRuntime();
+    const session = runtime.repository.createSession("営業行動を整理したい");
+    runtime.repository.setPhase1Processing(session.id, true);
+
+    const { io, stdout } = createIo();
+    const exitCode = await runCli(["show", "--session", session.id], {
+      io,
+      createRuntime: () => runtime,
+    });
+
+    expect(exitCode).toBe(0);
+    expect(stdout.join("\n")).toContain("isProcessing: yes");
+  });
+
+  test("start --wait は Phase1 待機タイムアウトで終了できる", async () => {
+    process.env.ROLES_CLI_WAIT_TIMEOUT_MS = "10";
+    const runtime = createTestRuntime({
+      requirementAgent: {
+        async decide() {
+          return await new Promise(() => {});
+        },
+      },
+    });
+    const { io, stdout, stderr } = createIo();
+
+    const exitCode = await runCli(
+      ["start", "--topic", "営業行動を整理したい", "--wait"],
+      {
+        io,
+        createRuntime: () => runtime,
+      },
+    );
+
+    expect(exitCode).toBe(1);
+    expect(stdout.join("\n")).toContain("sessionId:");
+    expect(stderr.join("\n")).toContain(
+      "Phase1 の待機がタイムアウトしました。",
+    );
+    expect(stderr.join("\n")).toContain("isProcessing: yes");
   });
 });

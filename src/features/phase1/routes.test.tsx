@@ -78,6 +78,21 @@ describe("parseRequirementAgentDecision", () => {
       "Failed to parse requirement agent JSON.",
     );
   });
+
+  test("不完全な complete は失敗する", () => {
+    expect(() =>
+      parseRequirementAgentDecision(
+        JSON.stringify({
+          kind: "complete",
+          message: "定義がまとまりました。",
+          result: {
+            requirements: completedResult.requirements,
+            discussionPoints: completedResult.discussionPoints,
+          },
+        }),
+      ),
+    ).toThrow("Requirement agent returned invalid complete payload.");
+  });
 });
 
 describe("output language", () => {
@@ -103,14 +118,23 @@ describe("output language", () => {
     expect(prompt).toContain(
       "Do not exclude a role only because it is senior, strategic, or not a day-to-day operator",
     );
+    expect(prompt).toContain(
+      "When you ask, ask exactly one major question about one missing issue only",
+    );
+    expect(prompt).toContain(
+      'If some minor detail is missing, convert it into an explicit assumption and continue with kind="complete"',
+    );
   });
 
   test("要件定義役の補助指示は常に英語を使う", () => {
     expect(buildRequirementAgentInstruction(true)).toContain(
       'always return kind="complete"',
     );
+    expect(buildRequirementAgentInstruction(true)).toContain(
+      "converted into explicit assumptions",
+    );
     expect(buildRequirementAgentInstruction(false)).toContain(
-      'Return kind="ask"',
+      'Return kind="ask" only',
     );
   });
 });

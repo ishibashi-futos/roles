@@ -1,5 +1,7 @@
 import { logger } from "../logger";
 
+export const DEFAULT_LLM_TIMEOUT_MS = 60_000;
+
 export type OpenAiChatMessage = {
   role: "system" | "user" | "assistant";
   content: string;
@@ -31,6 +33,7 @@ export class OpenAiCompatibleClient {
     private readonly baseUrl: string,
     private readonly apiKey: string,
     private readonly model: string,
+    private readonly timeoutMs = getLlmTimeoutMsFromEnv(),
   ) {}
 
   async createJsonChatCompletion(
@@ -54,11 +57,16 @@ export class OpenAiCompatibleClient {
       messages,
       response_format: responseFormat,
     };
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => {
+      controller.abort("timeout");
+    }, this.timeoutMs);
 
     logger.info("LLM request started", {
       url,
       model: this.model,
       messageCount: messages.length,
+      timeoutMs: this.timeoutMs,
     });
 
     let response: Response;
@@ -70,6 +78,7 @@ export class OpenAiCompatibleClient {
           authorization: `Bearer ${this.apiKey}`,
         },
         body: JSON.stringify(body),
+        signal: controller.signal,
       });
     } catch (error) {
       logger.error("LLM request failed before response", {
@@ -77,7 +86,12 @@ export class OpenAiCompatibleClient {
         model: this.model,
         error: error instanceof Error ? error.message : String(error),
       });
+      if (controller.signal.aborted) {
+        throw new Error("LLM request timed out.");
+      }
       throw error;
+    } finally {
+      clearTimeout(timeoutId);
     }
 
     const responseText = await response.text();
@@ -149,4 +163,20 @@ const extractErrorMessage = (error: OpenAiChatCompletionResponse["error"]) => {
   }
 
   return "LLM request failed.";
+};
+
+export const getLlmTimeoutMsFromEnv = (
+  env: NodeJS.ProcessEnv = process.env,
+) => {
+  const rawValue = env.ROLES_LLM_TIMEOUT_MS;
+  if (!rawValue) {
+    return DEFAULT_LLM_TIMEOUT_MS;
+  }
+
+  const parsed = Number.parseInt(rawValue, 10);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    return DEFAULT_LLM_TIMEOUT_MS;
+  }
+
+  return parsed;
 };

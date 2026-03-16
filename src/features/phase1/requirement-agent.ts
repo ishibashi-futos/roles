@@ -61,22 +61,31 @@ The JSON must match one of the following shapes.
 
 Rules:
 - Interact with the user in ${describeOutputLanguage(outputLanguage)}
-- Return kind="ask" while critical information is still missing
-- You may return kind="complete" if the definition is good enough to start the discussion, even if some ambiguity remains
+- Follow this reasoning order internally: identify the business workflow, extract the objective, extract constraints, determine the essential stakeholders, draft 2-4 decision-grade discussion points, then decide whether any remaining gap is truly blocking
+- You may return kind="complete" once the topic, objective, major constraints, and candidate stakeholders are sufficiently clear to start the discussion
+- Return kind="ask" only when the missing information prevents you from producing at least 2 decision-grade discussion points or at least 3 meaningful conflicting roles
+- Never ask for nice-to-have details
+- When you ask, ask exactly one major question about one missing issue only
+- Do not combine multiple missing issues into one question
+- Do not repeat the same question in different wording
+- If some minor detail is missing, convert it into an explicit assumption and continue with kind="complete"
 - roles must contain between 3 and ${MAX_ROLE_COUNT} items
 - Choose roles to maximize decision quality for the topic, not just operational coverage
 - Include executive or sponsor roles such as CxO, business owner, or department head when they are relevant to the topic
 - If the user explicitly requests certain roles, titles, seniority levels, or stakeholder groups, reflect them in the generated roles unless they directly conflict with the topic
 - Do not exclude a role only because it is senior, strategic, or not a day-to-day operator
 - discussionPoints must contain at least 2 items
+- discussionPoints must represent decisions or tradeoffs that could change the final strategy, not generic workstreams
+- roles must represent contrasting viewpoints that can disagree in the discussion, not a flat department checklist
+- systemPromptSeed must state the role's argumentative stance in one sentence
 - successCriteria, constraints, assumptions, responsibilities, and concerns must never be empty arrays`;
 
 export const buildRequirementAgentInstruction = (
   shouldForceComplete: boolean,
 ) =>
   shouldForceComplete
-    ? 'This is the final confirmation. Do not ask follow-up questions and always return kind="complete".'
-    : 'Return kind="ask" if more information is required.';
+    ? 'This is the final confirmation. Do not ask follow-up questions and always return kind="complete". Missing minor details must be converted into explicit assumptions.'
+    : 'Return kind="ask" only if one blocking gap prevents a discussion-ready definition. Ask about one issue only.';
 
 const REQUIREMENT_AGENT_RESPONSE_SCHEMA = {
   type: "object",
@@ -214,17 +223,13 @@ export class OpenAiRequirementAgent implements RequirementAgent {
         },
         {
           role: "user",
-          content: JSON.stringify(
-            {
-              topic: input.topic,
-              userReplyCount: input.userReplyCount,
-              maxUserReplyCount: input.maxUserReplyCount,
-              instruction: forcedCompletionInstruction,
-              conversation: input.messages,
-            },
-            null,
-            2,
-          ),
+          content: buildRequirementAgentUserMessage({
+            topic: input.topic,
+            messages: input.messages,
+            userReplyCount: input.userReplyCount,
+            maxUserReplyCount: input.maxUserReplyCount,
+            instruction: forcedCompletionInstruction,
+          }),
         },
       ],
       {
@@ -297,10 +302,7 @@ export const parseRequirementAgentDecision = (content: string) => {
       message: parsed.message,
     });
 
-    return {
-      kind: "ask",
-      message: parsed.message,
-    } satisfies RequirementAgentDecision;
+    throw new Error("Requirement agent returned invalid complete payload.");
   }
 
   throw new Error("Requirement agent JSON format is invalid.");
@@ -383,4 +385,33 @@ const validatePhase1Result = (value: unknown): string | null => {
   }
 
   return null;
+};
+
+const buildRequirementAgentUserMessage = (input: {
+  topic: string;
+  messages: RequirementMessage[];
+  userReplyCount: number;
+  maxUserReplyCount: number;
+  instruction: string;
+}) => {
+  const conversation = input.messages
+    .map(
+      (message, index) => `${index + 1}. ${message.role}: ${message.content}`,
+    )
+    .join("\n");
+
+  return `Requirement intake
+- topic: ${input.topic}
+- userReplyCount: ${input.userReplyCount}
+- maxUserReplyCount: ${input.maxUserReplyCount}
+- rule: ${input.instruction}
+
+Decision policy
+1. Extract known facts about objective, success criteria, constraints, and stakeholders.
+2. Identify any blocking gap.
+3. If there is no blocking gap, return kind="complete" and absorb minor uncertainty into assumptions.
+4. If there is a blocking gap, return kind="ask" with exactly one question about exactly one issue.
+
+Conversation
+${conversation}`;
 };

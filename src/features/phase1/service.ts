@@ -1,13 +1,17 @@
 import { logger } from "../../shared/logger";
 import { WorkflowSessionRepository } from "../../shared/workflow-session-repository";
+import { getLlmTimeoutMsFromEnv } from "../../shared/llm/openai-compatible-client";
+import type { WorkflowSession } from "../../shared/workflow-types";
 import type { RequirementAgent } from "./requirement-agent";
 
 type Phase1ServiceOptions = {
   maxUserReplyCount?: number;
+  staleProcessingTimeoutMs?: number;
 };
 
 export class Phase1Service {
   private readonly maxUserReplyCount: number;
+  private readonly staleProcessingTimeoutMs: number;
 
   constructor(
     private readonly store: WorkflowSessionRepository,
@@ -15,6 +19,9 @@ export class Phase1Service {
     options: Phase1ServiceOptions = {},
   ) {
     this.maxUserReplyCount = options.maxUserReplyCount ?? 3;
+    this.staleProcessingTimeoutMs =
+      options.staleProcessingTimeoutMs ??
+      Math.max(getLlmTimeoutMsFromEnv() * 2, 120_000);
   }
 
   createSession(topic: string) {
@@ -28,7 +35,7 @@ export class Phase1Service {
   }
 
   submitReply(sessionId: string, message: string) {
-    const session = this.store.getSession(sessionId);
+    const session = this.getLatestSession(sessionId);
 
     if (!session) {
       throw new Error("session_not_found");
@@ -51,7 +58,7 @@ export class Phase1Service {
   }
 
   getSession(sessionId: string) {
-    return this.store.getSession(sessionId);
+    return this.getLatestSession(sessionId);
   }
 
   subscribe(
@@ -62,7 +69,7 @@ export class Phase1Service {
   }
 
   private async process(sessionId: string) {
-    const session = this.store.getSession(sessionId);
+    const session = this.getLatestSession(sessionId);
     if (!session || session.phase1.isProcessing) {
       return;
     }
@@ -119,5 +126,40 @@ export class Phase1Service {
         sessionId,
       });
     }
+  }
+
+  private getLatestSession(sessionId: string) {
+    const session = this.store.getSession(sessionId);
+    if (!session) {
+      return null;
+    }
+
+    if (!this.shouldRecoverStaleProcessing(session)) {
+      return session;
+    }
+
+    logger.info("Phase1 stale processing recovered", {
+      sessionId,
+      updatedAt: session.updatedAt,
+      staleProcessingTimeoutMs: this.staleProcessingTimeoutMs,
+    });
+    this.store.setPhase1Processing(sessionId, false);
+    return this.store.getSession(sessionId);
+  }
+
+  private shouldRecoverStaleProcessing(session: WorkflowSession) {
+    if (
+      session.phase1.status !== "collecting_requirements" ||
+      !session.phase1.isProcessing
+    ) {
+      return false;
+    }
+
+    const updatedAt = Date.parse(session.updatedAt);
+    if (Number.isNaN(updatedAt)) {
+      return true;
+    }
+
+    return Date.now() - updatedAt >= this.staleProcessingTimeoutMs;
   }
 }
