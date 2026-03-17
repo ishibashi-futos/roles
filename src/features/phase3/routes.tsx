@@ -79,6 +79,14 @@ const ReportPage = ({ sessionId }: { sessionId: string }) => (
           </section>
 
           <button
+            id="resume-button"
+            type="button"
+            class="hidden w-full rounded-full border border-amber-300 bg-amber-50 px-5 py-3 text-sm font-semibold text-amber-900"
+          >
+            議論を再開
+          </button>
+
+          <button
             id="retry-button"
             type="button"
             class="hidden w-full rounded-full bg-[linear-gradient(135deg,var(--color-blue),var(--color-green))] px-5 py-3 text-sm font-semibold text-slate-950"
@@ -144,6 +152,7 @@ const unresolvedPoints = document.getElementById("unresolved-points");
 const banner = document.getElementById("banner");
 const loading = document.getElementById("loading");
 const reportContent = document.getElementById("report-content");
+const resumeButton = document.getElementById("resume-button");
 const retryButton = document.getElementById("retry-button");
 const forkForm = document.getElementById("fork-form");
 const forkMessage = document.getElementById("fork-message");
@@ -162,9 +171,17 @@ const completionReasonLabel = (reason) => {
   return "未確定";
 };
 
+const canResumeDiscussion = () =>
+  state.phaseState.phase2.status === "completed" &&
+  state.phaseState.phase2.completionReason === "circuit_breaker";
+
 const renderStatusText = () => {
   if (state.phaseState.phase2.status !== "completed") {
     statusText.textContent = "Phase 2 完了後に利用できます。";
+    return;
+  }
+  if (canResumeDiscussion()) {
+    statusText.textContent = "議論を再開すると、新しいセッションで続きから議論します。";
     return;
   }
   if (state.phaseState.phase3.status === "completed") {
@@ -223,6 +240,7 @@ const renderReport = () => {
     "hidden",
     state.phaseState.phase3.status !== "failed" || state.phaseState.phase2.status !== "completed",
   );
+  resumeButton.classList.toggle("hidden", !canResumeDiscussion());
 
   if (isCompleted) {
     reportContent.innerHTML = state.phaseState.reportHtml;
@@ -330,6 +348,24 @@ retryButton.addEventListener("click", async () => {
   if (!response.ok) {
     statusText.textContent = "再試行の開始に失敗しました。";
   }
+});
+
+resumeButton.addEventListener("click", async () => {
+  resumeButton.disabled = true;
+  statusText.textContent = "再開用の新しいセッションを作成しています。";
+  const response = await fetch(\`/api/sessions/\${state.sessionId}/phase2/resume\`, {
+    method: "POST",
+  });
+
+  if (!response.ok) {
+    resumeButton.disabled = false;
+    await hydrate();
+    statusText.textContent = "議論再開用セッションの作成に失敗しました。";
+    return;
+  }
+
+  const payload = await response.json();
+  window.location.href = \`/arena/\${payload.sessionId}\`;
 });
 
 forkForm.addEventListener("submit", async (event) => {

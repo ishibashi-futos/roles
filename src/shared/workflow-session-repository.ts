@@ -32,6 +32,8 @@ type SessionRow = {
   phase2_current_discussion_point_index: number;
   phase2_current_turn_count: number;
   phase2_total_turn_count: number;
+  phase2_max_turns_per_point_override: number | null;
+  phase2_max_total_turns_override: number | null;
   phase2_messages: string;
   phase2_point_statuses: string;
   phase2_judge_decisions: string;
@@ -92,6 +94,8 @@ const mapSession = (row: SessionRow): WorkflowSession => ({
     currentDiscussionPointIndex: row.phase2_current_discussion_point_index,
     currentTurnCount: row.phase2_current_turn_count,
     totalTurnCount: row.phase2_total_turn_count,
+    maxTurnsPerPointOverride: row.phase2_max_turns_per_point_override,
+    maxTotalTurnsOverride: row.phase2_max_total_turns_override,
     messages: parseJson<ArenaMessage[]>(row.phase2_messages, []),
     pointStatuses: parseJson<PointStatus[]>(row.phase2_point_statuses, []),
     judgeDecisions: parseJson<JudgeDecisionRecord[]>(
@@ -150,6 +154,8 @@ export class WorkflowSessionRepository {
         phase2_current_discussion_point_index INTEGER NOT NULL,
         phase2_current_turn_count INTEGER NOT NULL,
         phase2_total_turn_count INTEGER NOT NULL,
+        phase2_max_turns_per_point_override INTEGER,
+        phase2_max_total_turns_override INTEGER,
         phase2_messages TEXT NOT NULL,
         phase2_point_statuses TEXT NOT NULL,
         phase2_judge_decisions TEXT NOT NULL DEFAULT '[]',
@@ -202,13 +208,14 @@ export class WorkflowSessionRepository {
         `INSERT INTO sessions (
           id, topic, phase1_status, phase1_messages, phase1_result,
           phase1_user_reply_count, phase1_is_processing, phase1_error_message,
-          phase2_status, phase2_current_discussion_point_index, phase2_current_turn_count,
-          phase2_total_turn_count, phase2_messages, phase2_point_statuses,
-          phase2_judge_decisions, phase2_last_judge_decision, phase2_completion_reason,
+        phase2_status, phase2_current_discussion_point_index, phase2_current_turn_count,
+        phase2_total_turn_count, phase2_max_turns_per_point_override,
+        phase2_max_total_turns_override, phase2_messages, phase2_point_statuses,
+        phase2_judge_decisions, phase2_last_judge_decision, phase2_completion_reason,
           phase2_is_processing, phase2_error, phase3_status, phase3_report_markdown,
           phase3_completion_reason, phase3_is_processing, phase3_error_message,
           created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         session.id,
@@ -223,6 +230,8 @@ export class WorkflowSessionRepository {
         session.phase2.currentDiscussionPointIndex,
         session.phase2.currentTurnCount,
         session.phase2.totalTurnCount,
+        session.phase2.maxTurnsPerPointOverride,
+        session.phase2.maxTotalTurnsOverride,
         serialize(session.phase2.messages),
         serialize(session.phase2.pointStatuses),
         serialize(session.phase2.judgeDecisions),
@@ -279,13 +288,14 @@ export class WorkflowSessionRepository {
         `INSERT INTO sessions (
           id, topic, phase1_status, phase1_messages, phase1_result,
           phase1_user_reply_count, phase1_is_processing, phase1_error_message,
-          phase2_status, phase2_current_discussion_point_index, phase2_current_turn_count,
-          phase2_total_turn_count, phase2_messages, phase2_point_statuses,
-          phase2_judge_decisions, phase2_last_judge_decision, phase2_completion_reason,
+        phase2_status, phase2_current_discussion_point_index, phase2_current_turn_count,
+        phase2_total_turn_count, phase2_max_turns_per_point_override,
+        phase2_max_total_turns_override, phase2_messages, phase2_point_statuses,
+        phase2_judge_decisions, phase2_last_judge_decision, phase2_completion_reason,
           phase2_is_processing, phase2_error, phase3_status, phase3_report_markdown,
           phase3_completion_reason, phase3_is_processing, phase3_error_message,
           created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         session.id,
@@ -300,10 +310,119 @@ export class WorkflowSessionRepository {
         session.phase2.currentDiscussionPointIndex,
         session.phase2.currentTurnCount,
         session.phase2.totalTurnCount,
+        session.phase2.maxTurnsPerPointOverride,
+        session.phase2.maxTotalTurnsOverride,
         serialize(session.phase2.messages),
         serialize(session.phase2.pointStatuses),
         serialize(session.phase2.judgeDecisions),
         null,
+        session.phase2.completionReason,
+        Number(session.phase2.isProcessing),
+        null,
+        session.phase3.status,
+        session.phase3.reportMarkdown,
+        session.phase3.completionReason,
+        Number(session.phase3.isProcessing),
+        session.phase3.errorMessage,
+        session.createdAt,
+        session.updatedAt,
+      );
+
+    this.pushEvent(session.id, {
+      id: 0,
+      event: "session_created",
+      data: {
+        sessionId: session.id,
+        topic: session.topic,
+      },
+    });
+
+    return session;
+  }
+
+  createSessionForPhase2Resume(input: {
+    sourceSessionId: string;
+    maxTurnsPerPointOverride: number;
+    maxTotalTurnsOverride: number;
+  }) {
+    const sourceSession = this.requireSession(input.sourceSessionId);
+    const sourceResult = sourceSession.phase1.result;
+
+    if (!sourceResult || sourceSession.phase1.status !== "completed") {
+      throw new Error("session_phase1_not_completed");
+    }
+
+    const timestamp = now();
+    const session: WorkflowSession = {
+      id: createSessionId(),
+      topic: sourceSession.topic,
+      phase1: {
+        status: "completed",
+        messages: [...sourceSession.phase1.messages],
+        result: sourceResult,
+        userReplyCount: sourceSession.phase1.userReplyCount,
+        isProcessing: false,
+        errorMessage: null,
+      },
+      phase2: {
+        status: "idle",
+        currentDiscussionPointIndex:
+          sourceSession.phase2.currentDiscussionPointIndex,
+        currentTurnCount: sourceSession.phase2.currentTurnCount,
+        totalTurnCount: sourceSession.phase2.totalTurnCount,
+        maxTurnsPerPointOverride: input.maxTurnsPerPointOverride,
+        maxTotalTurnsOverride: input.maxTotalTurnsOverride,
+        messages: [...sourceSession.phase2.messages],
+        pointStatuses: sourceSession.phase2.pointStatuses.map((status) => ({
+          ...status,
+          status: status.status === "forced_stop" ? "pending" : status.status,
+        })),
+        judgeDecisions: [...sourceSession.phase2.judgeDecisions],
+        lastJudgeDecision: sourceSession.phase2.lastJudgeDecision,
+        completionReason: null,
+        isProcessing: false,
+        error: null,
+      },
+      phase3: createInitialPhase3State(),
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    };
+
+    this.database
+      .query(
+        `INSERT INTO sessions (
+          id, topic, phase1_status, phase1_messages, phase1_result,
+          phase1_user_reply_count, phase1_is_processing, phase1_error_message,
+          phase2_status, phase2_current_discussion_point_index, phase2_current_turn_count,
+          phase2_total_turn_count, phase2_max_turns_per_point_override,
+          phase2_max_total_turns_override, phase2_messages, phase2_point_statuses,
+          phase2_judge_decisions, phase2_last_judge_decision, phase2_completion_reason,
+          phase2_is_processing, phase2_error, phase3_status, phase3_report_markdown,
+          phase3_completion_reason, phase3_is_processing, phase3_error_message,
+          created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .run(
+        session.id,
+        session.topic,
+        session.phase1.status,
+        serialize(session.phase1.messages),
+        serialize(session.phase1.result),
+        session.phase1.userReplyCount,
+        Number(session.phase1.isProcessing),
+        session.phase1.errorMessage,
+        session.phase2.status,
+        session.phase2.currentDiscussionPointIndex,
+        session.phase2.currentTurnCount,
+        session.phase2.totalTurnCount,
+        session.phase2.maxTurnsPerPointOverride,
+        session.phase2.maxTotalTurnsOverride,
+        serialize(session.phase2.messages),
+        serialize(session.phase2.pointStatuses),
+        serialize(session.phase2.judgeDecisions),
+        session.phase2.lastJudgeDecision
+          ? serialize(session.phase2.lastJudgeDecision)
+          : null,
         session.phase2.completionReason,
         Number(session.phase2.isProcessing),
         null,
@@ -775,6 +894,8 @@ export class WorkflowSessionRepository {
           phase2_current_discussion_point_index = ?,
           phase2_current_turn_count = ?,
           phase2_total_turn_count = ?,
+          phase2_max_turns_per_point_override = ?,
+          phase2_max_total_turns_override = ?,
           phase2_messages = ?,
           phase2_point_statuses = ?,
           phase2_judge_decisions = ?,
@@ -802,6 +923,8 @@ export class WorkflowSessionRepository {
         session.phase2.currentDiscussionPointIndex,
         session.phase2.currentTurnCount,
         session.phase2.totalTurnCount,
+        session.phase2.maxTurnsPerPointOverride,
+        session.phase2.maxTotalTurnsOverride,
         serialize(session.phase2.messages),
         serialize(session.phase2.pointStatuses),
         serialize(session.phase2.judgeDecisions),
@@ -828,6 +951,14 @@ export class WorkflowSessionRepository {
     const columns = new Set(rows.map((row) => row.name));
 
     const missingColumns = [
+      {
+        name: "phase2_max_turns_per_point_override",
+        sql: "ALTER TABLE sessions ADD COLUMN phase2_max_turns_per_point_override INTEGER",
+      },
+      {
+        name: "phase2_max_total_turns_override",
+        sql: "ALTER TABLE sessions ADD COLUMN phase2_max_total_turns_override INTEGER",
+      },
       {
         name: "phase2_judge_decisions",
         sql: "ALTER TABLE sessions ADD COLUMN phase2_judge_decisions TEXT NOT NULL DEFAULT '[]'",

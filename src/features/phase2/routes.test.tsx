@@ -168,6 +168,7 @@ describe("phase2 routes", () => {
     expect(html).toContain('href="/icon.svg"');
     expect(html).toContain('alt="roles ロゴ"');
     expect(html).toContain("/report/");
+    expect(html).toContain("議論を再開");
     expect(html).toContain("新しいセッションで方向修正");
   });
 
@@ -391,5 +392,232 @@ describe("phase2 routes", () => {
         (message) => message.discussionPointId === "point-1",
       ).length,
     ).toBe(2);
+  });
+
+  test("circuit_breaker 完了後に別セッションへ fork して議論を再開できる", async () => {
+    let judgeCallCount = 0;
+    const facilitatorAgent: FacilitatorAgent = {
+      async decide(input) {
+        return {
+          discussionPointId: input.currentDiscussionPoint.id,
+          targetRoleId: "role-1",
+          message: `${input.currentDiscussionPoint.title}について意見をお願いします。`,
+        };
+      },
+    };
+    const roleAgent: RoleAgent = {
+      async speak(input) {
+        return `${input.currentDiscussionPoint.id} に対する ${input.role.name} の意見です。`;
+      },
+    };
+    const judgeAgent: JudgeAgent = {
+      async decide() {
+        judgeCallCount += 1;
+        return {
+          isResolved: judgeCallCount >= 2,
+          reason:
+            judgeCallCount >= 2
+              ? "論点が整理されました。"
+              : "まだ追加議論が必要です。",
+        };
+      },
+    };
+
+    const app = createApp({
+      repository: createTestRepository(),
+      requirementAgent: completeImmediatelyRequirementAgent,
+      facilitatorAgent,
+      roleAgent,
+      judgeAgent,
+      reportAgent: {
+        async generate() {
+          return `# 決定事項
+
+- 再開前のレポート
+
+# 対立意見
+
+- 追加議論が必要
+
+# 残課題
+
+- 次の打ち手を詰める`;
+        },
+      },
+      maxTurnsPerPoint: 1,
+    });
+    const sessionId = await createSession(app);
+
+    const startResponse = await app.request(
+      `/api/sessions/${sessionId}/phase2/start`,
+      {
+        method: "POST",
+      },
+    );
+
+    expect(startResponse.status).toBe(202);
+    await Bun.sleep(60);
+
+    const sourceStateResponse = await app.request(
+      `/api/sessions/${sessionId}/phase2/state`,
+    );
+    const sourceState = (await sourceStateResponse.json()) as {
+      phase2: {
+        status: string;
+        completionReason: string | null;
+        currentDiscussionPointIndex: number;
+        currentTurnCount: number;
+        totalTurnCount: number;
+        pointStatuses: Array<{ status: string }>;
+        messages: Array<{ turnNumber: number }>;
+      };
+      phase3: {
+        reportMarkdown: string | null;
+      };
+    };
+
+    expect(sourceState.phase2.status).toBe("completed");
+    expect(sourceState.phase2.completionReason).toBe("circuit_breaker");
+    expect(sourceState.phase2.pointStatuses[0]?.status).toBe("forced_stop");
+    expect(sourceState.phase3.reportMarkdown).toContain("再開前のレポート");
+
+    const resumeResponse = await app.request(
+      `/api/sessions/${sessionId}/phase2/resume`,
+      {
+        method: "POST",
+      },
+    );
+
+    expect(resumeResponse.status).toBe(201);
+    const resumePayload = (await resumeResponse.json()) as {
+      sessionId: string;
+    };
+    expect(resumePayload.sessionId).not.toBe(sessionId);
+
+    const resumedBeforeStartResponse = await app.request(
+      `/api/sessions/${resumePayload.sessionId}/phase2/state`,
+    );
+    const resumedBeforeStart = (await resumedBeforeStartResponse.json()) as {
+      phase2: {
+        status: string;
+        completionReason: string | null;
+        currentDiscussionPointIndex: number;
+        currentTurnCount: number;
+        totalTurnCount: number;
+        maxTurnsPerPointOverride: number | null;
+        maxTotalTurnsOverride: number | null;
+        pointStatuses: Array<{ status: string }>;
+        messages: Array<{ turnNumber: number }>;
+      };
+      phase3: {
+        reportMarkdown: string | null;
+      };
+    };
+
+    expect(resumedBeforeStart.phase2.status).toBe("idle");
+    expect(resumedBeforeStart.phase2.completionReason).toBeNull();
+    expect(resumedBeforeStart.phase2.currentDiscussionPointIndex).toBe(0);
+    expect(resumedBeforeStart.phase2.currentTurnCount).toBe(1);
+    expect(resumedBeforeStart.phase2.totalTurnCount).toBe(1);
+    expect(resumedBeforeStart.phase2.maxTurnsPerPointOverride).toBe(12);
+    expect(resumedBeforeStart.phase2.maxTotalTurnsOverride).toBe(30);
+    expect(resumedBeforeStart.phase2.pointStatuses[0]?.status).toBe("pending");
+    expect(resumedBeforeStart.phase2.messages).toHaveLength(2);
+    expect(resumedBeforeStart.phase3.reportMarkdown).toBeNull();
+
+    const resumedStartResponse = await app.request(
+      `/api/sessions/${resumePayload.sessionId}/phase2/start`,
+      {
+        method: "POST",
+      },
+    );
+
+    expect(resumedStartResponse.status).toBe(202);
+    await Bun.sleep(80);
+
+    const resumedAfterStartResponse = await app.request(
+      `/api/sessions/${resumePayload.sessionId}/phase2/state`,
+    );
+    const resumedAfterStart = (await resumedAfterStartResponse.json()) as {
+      phase2: {
+        status: string;
+        completionReason: string | null;
+        messages: Array<{ turnNumber: number }>;
+      };
+    };
+
+    expect(resumedAfterStart.phase2.status).toBe("completed");
+    expect(resumedAfterStart.phase2.completionReason).toBe("resolved");
+    expect(resumedAfterStart.phase2.messages[2]?.turnNumber).toBe(2);
+    expect(resumedAfterStart.phase2.messages[4]?.turnNumber).toBe(3);
+
+    const sourceAfterResumeResponse = await app.request(
+      `/api/sessions/${sessionId}/phase2/state`,
+    );
+    const sourceAfterResume = (await sourceAfterResumeResponse.json()) as {
+      phase2: {
+        completionReason: string | null;
+        pointStatuses: Array<{ status: string }>;
+      };
+      phase3: {
+        reportMarkdown: string | null;
+      };
+    };
+
+    expect(sourceAfterResume.phase2.completionReason).toBe("circuit_breaker");
+    expect(sourceAfterResume.phase2.pointStatuses[0]?.status).toBe(
+      "forced_stop",
+    );
+    expect(sourceAfterResume.phase3.reportMarkdown).toContain(
+      "再開前のレポート",
+    );
+  });
+
+  test("resolved 完了セッションは resume できない", async () => {
+    const facilitatorAgent: FacilitatorAgent = {
+      async decide(input) {
+        return {
+          discussionPointId: input.currentDiscussionPoint.id,
+          targetRoleId: "role-1",
+          message: `${input.currentDiscussionPoint.title}について意見をお願いします。`,
+        };
+      },
+    };
+    const roleAgent: RoleAgent = {
+      async speak(input) {
+        return `${input.role.name}として回答します。`;
+      },
+    };
+    const judgeAgent: JudgeAgent = {
+      async decide() {
+        return {
+          isResolved: true,
+          reason: "議論が十分に整理されました。",
+        };
+      },
+    };
+
+    const app = createApp({
+      repository: createTestRepository(),
+      requirementAgent: completeImmediatelyRequirementAgent,
+      facilitatorAgent,
+      roleAgent,
+      judgeAgent,
+    });
+    const sessionId = await createSession(app);
+
+    await app.request(`/api/sessions/${sessionId}/phase2/start`, {
+      method: "POST",
+    });
+    await Bun.sleep(30);
+
+    const response = await app.request(
+      `/api/sessions/${sessionId}/phase2/resume`,
+      {
+        method: "POST",
+      },
+    );
+
+    expect(response.status).toBe(409);
   });
 });

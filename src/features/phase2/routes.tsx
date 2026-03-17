@@ -92,6 +92,14 @@ const ArenaPage = ({ sessionId }: { sessionId: string }) => (
           </section>
 
           <button
+            id="resume-button"
+            type="button"
+            class="hidden w-full rounded-full border border-amber-300/40 bg-amber-300/10 px-5 py-3 text-sm font-semibold text-amber-100"
+          >
+            議論を再開
+          </button>
+
+          <button
             id="retry-button"
             type="button"
             class="hidden w-full rounded-full bg-[linear-gradient(135deg,var(--color-blue),var(--color-green))] px-5 py-3 text-sm font-semibold text-slate-950"
@@ -154,6 +162,7 @@ const currentTurnCount = document.getElementById("current-turn-count");
 const totalTurnCount = document.getElementById("total-turn-count");
 const judgeResult = document.getElementById("judge-result");
 const pointStatuses = document.getElementById("point-statuses");
+const resumeButton = document.getElementById("resume-button");
 const retryButton = document.getElementById("retry-button");
 const reportLink = document.getElementById("report-link");
 const forkForm = document.getElementById("fork-form");
@@ -170,6 +179,10 @@ const speakerClassByType = {
   role: "border-emerald-400/40 bg-emerald-400/10",
   judge: "border-violet-400/40 bg-violet-400/10",
 };
+
+const canResumeDiscussion = () =>
+  state.session.phase2.status === "completed" &&
+  state.session.phase2.completionReason === "circuit_breaker";
 
 const renderMessages = () => {
   messages.innerHTML = [...state.session.phase2.messages].reverse().map((message) => \`
@@ -248,6 +261,7 @@ const renderDashboard = () => {
   judgeResult.textContent = state.session.phase2.lastJudgeDecision
     ? \`\${state.session.phase2.lastJudgeDecision.isResolved ? "resolved" : "pending"}\\n\${state.session.phase2.lastJudgeDecision.reason}\`
     : "まだ判定はありません。";
+  resumeButton.classList.toggle("hidden", !canResumeDiscussion());
   retryButton.classList.toggle("hidden", state.session.phase2.status !== "failed");
   reportLink.classList.toggle(
     "hidden",
@@ -266,6 +280,10 @@ const renderStatusText = () => {
   }
   if (state.session.phase2.status === "failed") {
     statusText.textContent = "失敗した論点を再試行できます。";
+    return;
+  }
+  if (canResumeDiscussion()) {
+    statusText.textContent = "議論を再開すると、新しいセッションで続きから議論します。";
     return;
   }
   if (state.session.phase3.status === "running" || state.session.phase3.status === "idle") {
@@ -462,6 +480,24 @@ retryButton.addEventListener("click", async () => {
   }
 });
 
+resumeButton.addEventListener("click", async () => {
+  resumeButton.disabled = true;
+  statusText.textContent = "再開用の新しいセッションを作成しています。";
+  const response = await fetch(\`/api/sessions/\${state.sessionId}/phase2/resume\`, {
+    method: "POST",
+  });
+
+  if (!response.ok) {
+    resumeButton.disabled = false;
+    await hydrate();
+    statusText.textContent = "議論再開用セッションの作成に失敗しました。";
+    return;
+  }
+
+  const payload = await response.json();
+  window.location.href = \`/arena/\${payload.sessionId}\`;
+});
+
 forkForm.addEventListener("submit", async (event) => {
   event.preventDefault();
   const message = forkMessage.value.trim();
@@ -592,6 +628,32 @@ export const registerPhase2Routes = (
         return c.json({ message: "this session cannot be retried." }, 409);
       }
       return c.json({ message: "failed to start retry." }, 500);
+    }
+  });
+
+  app.post("/api/sessions/:sessionId/phase2/resume", (c) => {
+    const sessionId = c.req.param("sessionId");
+
+    try {
+      const session = service.createResumeSession(sessionId);
+      return c.json({ sessionId: session.id }, 201);
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "unexpected_error";
+      logger.error("Phase2 resume failed", {
+        sessionId,
+        message,
+      });
+      if (message === "session_not_found") {
+        return c.json({ message: "session not found." }, 404);
+      }
+      if (
+        message === "session_phase1_not_completed" ||
+        message === "phase2_not_resumable"
+      ) {
+        return c.json({ message: "this session cannot be resumed." }, 409);
+      }
+      return c.json({ message: "failed to create resumed session." }, 500);
     }
   });
 

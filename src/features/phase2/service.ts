@@ -24,6 +24,8 @@ const FACILITATOR_ID = "facilitator";
 const FACILITATOR_NAME = "ファシリテーター";
 const JUDGE_ID = "judge";
 const JUDGE_NAME = "Judge";
+const RESUME_MAX_TURNS_PER_POINT = 12;
+const RESUME_MAX_TOTAL_TURNS_PER_DISCUSSION_POINT = 15;
 
 export class Phase2Service {
   private readonly maxTurnsPerPoint: number;
@@ -85,6 +87,30 @@ export class Phase2Service {
     void this.run(sessionId);
   }
 
+  createResumeSession(sessionId: string) {
+    const session = this.repository.getSession(sessionId);
+    if (!session) {
+      throw new Error("session_not_found");
+    }
+    if (session.phase1.status !== "completed" || !session.phase1.result) {
+      throw new Error("session_phase1_not_completed");
+    }
+    if (
+      session.phase2.status !== "completed" ||
+      session.phase2.completionReason !== "circuit_breaker"
+    ) {
+      throw new Error("phase2_not_resumable");
+    }
+
+    return this.repository.createSessionForPhase2Resume({
+      sourceSessionId: sessionId,
+      maxTurnsPerPointOverride: RESUME_MAX_TURNS_PER_POINT,
+      maxTotalTurnsOverride:
+        RESUME_MAX_TOTAL_TURNS_PER_DISCUSSION_POINT *
+        session.phase1.result.discussionPoints.length,
+    });
+  }
+
   private async run(sessionId: string) {
     try {
       while (true) {
@@ -102,7 +128,7 @@ export class Phase2Service {
           return;
         }
 
-        if (session.phase2.totalTurnCount >= this.maxTotalTurns) {
+        if (session.phase2.totalTurnCount >= this.getMaxTotalTurns(session)) {
           await this.finishWithCircuitBreaker(session);
           return;
         }
@@ -114,7 +140,9 @@ export class Phase2Service {
           return;
         }
 
-        if (session.phase2.currentTurnCount >= this.maxTurnsPerPoint) {
+        if (
+          session.phase2.currentTurnCount >= this.getMaxTurnsPerPoint(session)
+        ) {
           this.repository.setPointStatus(
             sessionId,
             currentPoint.id,
@@ -285,6 +313,14 @@ export class Phase2Service {
       throw new Error("session_phase1_not_completed");
     }
     return session;
+  }
+
+  private getMaxTurnsPerPoint(session: WorkflowSession) {
+    return session.phase2.maxTurnsPerPointOverride ?? this.maxTurnsPerPoint;
+  }
+
+  private getMaxTotalTurns(session: WorkflowSession) {
+    return session.phase2.maxTotalTurnsOverride ?? this.maxTotalTurns;
   }
 
   private validateFacilitatorDecision(

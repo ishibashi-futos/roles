@@ -203,6 +203,7 @@ describe("phase3 routes", () => {
     expect(response.status).toBe(200);
     const html = await response.text();
     expect(html).toContain("Report");
+    expect(html).toContain("議論を再開");
     expect(html).toContain("新しいセッションで方向修正");
   });
 

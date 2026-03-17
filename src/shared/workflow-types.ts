@@ -101,6 +101,8 @@ export type Phase2State = {
   currentDiscussionPointIndex: number;
   currentTurnCount: number;
   totalTurnCount: number;
+  maxTurnsPerPointOverride: number | null;
+  maxTotalTurnsOverride: number | null;
   messages: ArenaMessage[];
   pointStatuses: PointStatus[];
   judgeDecisions: JudgeDecisionRecord[];
@@ -245,6 +247,8 @@ export const createInitialPhase2State = (): Phase2State => ({
   currentDiscussionPointIndex: 0,
   currentTurnCount: 0,
   totalTurnCount: 0,
+  maxTurnsPerPointOverride: null,
+  maxTotalTurnsOverride: null,
   messages: [],
   pointStatuses: [],
   judgeDecisions: [],
