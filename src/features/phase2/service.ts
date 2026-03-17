@@ -24,8 +24,10 @@ const FACILITATOR_ID = "facilitator";
 const FACILITATOR_NAME = "ファシリテーター";
 const JUDGE_ID = "judge";
 const JUDGE_NAME = "Judge";
-const RESUME_MAX_TURNS_PER_POINT = 12;
-const RESUME_MAX_TOTAL_TURNS_PER_DISCUSSION_POINT = 15;
+const DEFAULT_MAX_TURNS_PER_POINT = 18;
+const DEFAULT_MAX_TOTAL_TURNS = 60;
+const RESUME_MAX_TURNS_PER_POINT = DEFAULT_MAX_TURNS_PER_POINT * 2;
+const RESUME_MAX_TOTAL_TURNS_PER_DISCUSSION_POINT = DEFAULT_MAX_TOTAL_TURNS / 2;
 
 export class Phase2Service {
   private readonly maxTurnsPerPoint: number;
@@ -41,8 +43,9 @@ export class Phase2Service {
     private readonly judgeAgent: JudgeAgent,
     options: Phase2ServiceOptions = {},
   ) {
-    this.maxTurnsPerPoint = options.maxTurnsPerPoint ?? 6;
-    this.maxTotalTurns = options.maxTotalTurns ?? 15;
+    this.maxTurnsPerPoint =
+      options.maxTurnsPerPoint ?? DEFAULT_MAX_TURNS_PER_POINT;
+    this.maxTotalTurns = options.maxTotalTurns ?? DEFAULT_MAX_TOTAL_TURNS;
     this.maxRetryCount = options.maxRetryCount ?? 3;
     this.onCompleted = options.onCompleted;
   }

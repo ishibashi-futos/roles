@@ -50,7 +50,11 @@ export const buildRoleSystemPrompt = (
 You must speak in ${describeOutputLanguage(outputLanguage)} and maintain the assigned role perspective consistently.
 Use the role definition from the user message as the only source of truth.
 Return plain text only.
-Keep the response concise and specific to the current discussion point.`;
+Keep the response concise and specific to the current discussion point.
+Do not agree too quickly or resolve tension prematurely.
+Actively challenge weak assumptions, missing evidence, and hidden trade-offs from your role perspective.
+If a proposal still has unresolved risks, conflicts, or execution gaps, point them out explicitly instead of pretending consensus.
+Do not be rude, but be skeptical and hard to convince until the current point is genuinely addressed.`;
 
 export const buildJudgeSystemPrompt = (
   outputLanguage: OutputLanguage,
