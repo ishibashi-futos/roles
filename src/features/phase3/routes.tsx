@@ -78,6 +78,20 @@ const ReportPage = ({ sessionId }: { sessionId: string }) => (
             </div>
           </section>
 
+          <section class="rounded-[28px] border border-white/80 bg-white/85 p-6 shadow-xl shadow-slate-950/5 backdrop-blur">
+            <p class="text-xs uppercase tracking-[0.28em] text-slate-400">
+              Export
+            </p>
+            <button
+              id="copy-report-button"
+              type="button"
+              class="mt-4 hidden w-full rounded-full border border-slate-200 bg-white px-5 py-3 text-sm font-semibold text-slate-700"
+            >
+              Meta を含めてコピー
+            </button>
+            <p id="copy-status" class="mt-3 text-sm text-slate-500" />
+          </section>
+
           <button
             id="resume-button"
             type="button"
@@ -111,7 +125,7 @@ const ReportPage = ({ sessionId }: { sessionId: string }) => (
               <button
                 id="fork-submit"
                 type="submit"
-                class="w-full rounded-full bg-[linear-gradient(135deg,var(--color-blue),var(--color-green))] px-5 py-3 text-sm font-semibold text-slate-950"
+                class="w-full rounded-full bg-[linear-gradient(135deg,var(--color-blue),var(--color-green))] px-5 py-3 text-sm font-semibold text-white"
               >
                 新しいセッションで方向修正
               </button>
@@ -152,6 +166,8 @@ const unresolvedPoints = document.getElementById("unresolved-points");
 const banner = document.getElementById("banner");
 const loading = document.getElementById("loading");
 const reportContent = document.getElementById("report-content");
+const copyReportButton = document.getElementById("copy-report-button");
+const copyStatus = document.getElementById("copy-status");
 const resumeButton = document.getElementById("resume-button");
 const retryButton = document.getElementById("retry-button");
 const forkForm = document.getElementById("fork-form");
@@ -201,6 +217,34 @@ const renderMeta = () => {
   unresolvedPoints.textContent = state.phaseState.phase2.hasUnresolvedPoints ? "あり" : "なし";
 };
 
+const buildCopyText = () => {
+  const reportMarkdown = state.phaseState.phase3.reportMarkdown;
+  if (!reportMarkdown) {
+    return "";
+  }
+
+  return [
+    "# Meta",
+    "",
+    "- テーマ",
+    state.phaseState.topic,
+    "",
+    "- Phase 2 完了理由",
+    completionReasonLabel(state.phaseState.phase2.completionReason),
+    "",
+    "- 未解決論点",
+    state.phaseState.phase2.hasUnresolvedPoints ? "あり" : "なし",
+    "",
+    "# Report",
+    "",
+    reportMarkdown,
+  ].join("\\n");
+};
+
+const clearCopyStatus = () => {
+  copyStatus.textContent = "";
+};
+
 const renderBanner = () => {
   banner.className = "rounded-2xl border px-4 py-3 text-sm";
   banner.textContent = "";
@@ -236,6 +280,7 @@ const renderReport = () => {
   const isCompleted = state.phaseState.phase3.status === "completed" && state.phaseState.reportHtml;
   loading.classList.toggle("hidden", Boolean(isCompleted) || state.phaseState.phase3.status === "failed" || state.phaseState.phase2.status !== "completed");
   reportContent.classList.toggle("hidden", !isCompleted);
+  copyReportButton.classList.toggle("hidden", !isCompleted);
   retryButton.classList.toggle(
     "hidden",
     state.phaseState.phase3.status !== "failed" || state.phaseState.phase2.status !== "completed",
@@ -248,6 +293,7 @@ const renderReport = () => {
   }
 
   reportContent.innerHTML = "";
+  clearCopyStatus();
 
   if (state.phaseState.phase2.status !== "completed") {
     loading.textContent = "Phase 2 完了後にレポートを生成できます。";
@@ -347,6 +393,24 @@ retryButton.addEventListener("click", async () => {
   retryButton.disabled = false;
   if (!response.ok) {
     statusText.textContent = "再試行の開始に失敗しました。";
+  }
+});
+
+copyReportButton.addEventListener("click", async () => {
+  const text = buildCopyText();
+  if (!text) {
+    copyStatus.textContent = "コピーできるレポートがありません。";
+    return;
+  }
+
+  copyReportButton.disabled = true;
+  try {
+    await navigator.clipboard.writeText(text);
+    copyStatus.textContent = "Meta を含むレポートをコピーしました。";
+  } catch {
+    copyStatus.textContent = "クリップボードへのコピーに失敗しました。";
+  } finally {
+    copyReportButton.disabled = false;
   }
 });
 

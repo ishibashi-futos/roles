@@ -91,6 +91,20 @@ const ArenaPage = ({ sessionId }: { sessionId: string }) => (
             <div id="point-statuses" class="mt-4 space-y-3" />
           </section>
 
+          <section class="rounded-[28px] border border-white/10 bg-white/5 p-6 backdrop-blur">
+            <p class="text-xs uppercase tracking-[0.28em] text-slate-400">
+              Export
+            </p>
+            <button
+              id="copy-discussion-button"
+              type="button"
+              class="mt-4 hidden w-full rounded-full border border-white/10 bg-white/5 px-5 py-3 text-sm font-semibold text-slate-100"
+            >
+              Meta を含めてコピー
+            </button>
+            <p id="copy-status" class="mt-3 text-sm text-slate-400" />
+          </section>
+
           <button
             id="resume-button"
             type="button"
@@ -110,7 +124,7 @@ const ArenaPage = ({ sessionId }: { sessionId: string }) => (
           <a
             id="report-link"
             href={`/report/${sessionId}`}
-            class="hidden w-full rounded-full border border-cyan-300/40 bg-cyan-300/10 px-5 py-3 text-center text-sm font-semibold text-cyan-100"
+            class="hidden block w-full rounded-full border border-cyan-300/40 bg-cyan-300/10 px-5 py-3 text-center text-sm font-semibold text-cyan-100"
           >
             レポートを見る
           </a>
@@ -162,6 +176,8 @@ const currentTurnCount = document.getElementById("current-turn-count");
 const totalTurnCount = document.getElementById("total-turn-count");
 const judgeResult = document.getElementById("judge-result");
 const pointStatuses = document.getElementById("point-statuses");
+const copyDiscussionButton = document.getElementById("copy-discussion-button");
+const copyStatus = document.getElementById("copy-status");
 const resumeButton = document.getElementById("resume-button");
 const retryButton = document.getElementById("retry-button");
 const reportLink = document.getElementById("report-link");
@@ -183,6 +199,70 @@ const speakerClassByType = {
 const canResumeDiscussion = () =>
   state.session.phase2.status === "completed" &&
   state.session.phase2.completionReason === "circuit_breaker";
+
+const completionReasonLabel = (reason) => {
+  if (reason === "resolved") {
+    return "resolved";
+  }
+  if (reason === "circuit_breaker") {
+    return "circuit_breaker";
+  }
+  if (reason === "failed") {
+    return "failed";
+  }
+  return "未確定";
+};
+
+const buildDiscussionCopyText = () => {
+  if (!state.session) {
+    return "";
+  }
+
+  const discussionPoints = state.session.phase1.result?.discussionPoints || [];
+  const messagesText = state.session.phase2.messages.map((message) => {
+    return [
+      \`## Turn \${message.turnNumber}\`,
+      \`- speakerType: \${message.speakerType}\`,
+      \`- speakerName: \${message.speakerName}\`,
+      "",
+      message.content,
+    ].join("\\n");
+  }).join("\\n\\n");
+  const pointStatusesText = state.session.phase2.pointStatuses.map((pointStatus) => {
+    const point = discussionPoints.find((candidate) => candidate.id === pointStatus.discussionPointId);
+    return \`- \${point?.title || pointStatus.discussionPointId}: \${pointStatus.status}\`;
+  }).join("\\n");
+
+  return [
+    "# Meta",
+    "",
+    "- テーマ",
+    state.session.topic,
+    "",
+    "- Phase 2 状態",
+    state.session.phase2.status,
+    "",
+    "- Phase 2 完了理由",
+    completionReasonLabel(state.session.phase2.completionReason),
+    "",
+    "- 現在の論点",
+    discussionPoints[state.session.phase2.currentDiscussionPointIndex]?.title || "完了",
+    "",
+    "- 現在論点ターン数",
+    String(state.session.phase2.currentTurnCount),
+    "",
+    "- 総ターン数",
+    String(state.session.phase2.totalTurnCount),
+    "",
+    "# Discussion Points",
+    "",
+    pointStatusesText || "- なし",
+    "",
+    "# Discussion",
+    "",
+    messagesText || "メッセージはまだありません。",
+  ].join("\\n");
+};
 
 const renderMessages = () => {
   messages.innerHTML = [...state.session.phase2.messages].reverse().map((message) => \`
@@ -261,6 +341,7 @@ const renderDashboard = () => {
   judgeResult.textContent = state.session.phase2.lastJudgeDecision
     ? \`\${state.session.phase2.lastJudgeDecision.isResolved ? "resolved" : "pending"}\\n\${state.session.phase2.lastJudgeDecision.reason}\`
     : "まだ判定はありません。";
+  copyDiscussionButton.classList.toggle("hidden", false);
   resumeButton.classList.toggle("hidden", !canResumeDiscussion());
   retryButton.classList.toggle("hidden", state.session.phase2.status !== "failed");
   reportLink.classList.toggle(
@@ -477,6 +558,24 @@ retryButton.addEventListener("click", async () => {
   retryButton.disabled = false;
   if (!response.ok) {
     statusText.textContent = "再試行の開始に失敗しました。";
+  }
+});
+
+copyDiscussionButton.addEventListener("click", async () => {
+  const text = buildDiscussionCopyText();
+  if (!text) {
+    copyStatus.textContent = "コピーできるディスカッションがありません。";
+    return;
+  }
+
+  copyDiscussionButton.disabled = true;
+  try {
+    await navigator.clipboard.writeText(text);
+    copyStatus.textContent = "Meta を含むディスカッションをコピーしました。";
+  } catch {
+    copyStatus.textContent = "クリップボードへのコピーに失敗しました。";
+  } finally {
+    copyDiscussionButton.disabled = false;
   }
 });
 

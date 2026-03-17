@@ -168,6 +168,7 @@ describe("phase2 routes", () => {
     expect(html).toContain('href="/icon.svg"');
     expect(html).toContain('alt="roles ロゴ"');
     expect(html).toContain("/report/");
+    expect(html).toContain("Meta を含めてコピー");
     expect(html).toContain("議論を再開");
     expect(html).toContain("新しいセッションで方向修正");
   });
