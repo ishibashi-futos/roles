@@ -4,6 +4,7 @@ import { createApp } from "../../app";
 import { WorkflowSessionRepository } from "../../shared/workflow-session-repository";
 import type { Phase1Result } from "../../shared/workflow-types";
 import type { RequirementAgent } from "../phase1/requirement-agent";
+import type { SessionTitleAgent } from "../phase1/session-title-agent";
 import type { FacilitatorAgent, JudgeAgent, RoleAgent } from "../phase2/agents";
 import { buildReportSystemPrompt, type ReportAgent } from "./agent";
 import { renderReportHtml, validateReportMarkdown } from "./report-markdown";
@@ -69,6 +70,18 @@ const completeImmediatelyRequirementAgent: RequirementAgent = {
 };
 
 const createTestRepository = () => new WorkflowSessionRepository(":memory:");
+
+const sessionTitleAgent: SessionTitleAgent = {
+  async generateTitle() {
+    return "営業行動の整理";
+  },
+};
+
+const createTestApp = (options: Parameters<typeof createApp>[0] = {}) =>
+  createApp({
+    sessionTitleAgent,
+    ...options,
+  });
 
 const createSession = async (app: ReturnType<typeof createApp>) => {
   const response = await app.request("/api/phase1/sessions", {
@@ -185,7 +198,7 @@ describe("phase3 routes", () => {
   };
 
   test("Report ページを返す", async () => {
-    const app = createApp({
+    const app = createTestApp({
       repository: createTestRepository(),
       requirementAgent: completeImmediatelyRequirementAgent,
       facilitatorAgent,
@@ -227,7 +240,7 @@ describe("phase3 routes", () => {
       },
     };
 
-    const app = createApp({
+    const app = createTestApp({
       repository: createTestRepository(),
       requirementAgent: completeImmediatelyRequirementAgent,
       facilitatorAgent,
@@ -266,7 +279,7 @@ describe("phase3 routes", () => {
   });
 
   test("Phase2 未完了では開始できない", async () => {
-    const app = createApp({
+    const app = createTestApp({
       repository: createTestRepository(),
       requirementAgent: completeImmediatelyRequirementAgent,
       facilitatorAgent,
@@ -312,7 +325,7 @@ describe("phase3 routes", () => {
       },
     };
 
-    const app = createApp({
+    const app = createTestApp({
       repository: createTestRepository(),
       requirementAgent: completeImmediatelyRequirementAgent,
       facilitatorAgent,

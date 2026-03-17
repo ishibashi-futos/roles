@@ -240,6 +240,7 @@ const printSessionDetail = (io: CliIo, session: WorkflowSession) => {
     ];
   const lines = [
     `sessionId: ${session.id}`,
+    `title: ${session.title}`,
     `topic: ${session.topic}`,
     `updatedAt: ${formatTimestamp(session.updatedAt)}`,
     `status: ${getSessionStatusLabel(session)}`,
@@ -449,9 +450,18 @@ export const runCli = async (args: string[], options: RunCliOptions = {}) => {
         const parsed = parseArguments(args.slice(1), ["--topic"], true);
         return await withRuntime(options, async (runtime, runtimeIo) => {
           const topic = requireValue(parsed.values, "topic", "--topic");
-          const session = runtime.phase1Service.createSession(topic);
+          let session: WorkflowSession;
+          try {
+            session = await runtime.phase1Service.createSession(topic);
+          } catch (error) {
+            const message =
+              error instanceof Error ? error.message : "unexpected_error";
+            runtimeIo.stderr(formatErrorMessage(message));
+            return 1;
+          }
           const waitTimeoutMs = getCliWaitTimeoutMs();
           runtimeIo.stdout(`sessionId: ${session.id}`);
+          runtimeIo.stdout(`title: ${session.title}`);
           runtimeIo.stdout(`topic: ${session.topic}`);
           runtimeIo.stdout("状態: 要件定義を開始しました。");
 
@@ -556,7 +566,7 @@ export const runCli = async (args: string[], options: RunCliOptions = {}) => {
 
           let created: WorkflowSession;
           try {
-            created = runtime.phase1Service.createSessionFromExistingChat(
+            created = await runtime.phase1Service.createSessionFromExistingChat(
               sessionId,
               message,
             );
@@ -568,6 +578,7 @@ export const runCli = async (args: string[], options: RunCliOptions = {}) => {
           }
 
           runtimeIo.stdout(`sessionId: ${created.id}`);
+          runtimeIo.stdout(`title: ${created.title}`);
           runtimeIo.stdout("新しいセッションを作成しました。");
           if (!parsed.wait) {
             return 0;
@@ -622,6 +633,7 @@ export const runCli = async (args: string[], options: RunCliOptions = {}) => {
             runtimeIo.stdout(
               [
                 `sessionId: ${session.id}`,
+                `title: ${session.title}`,
                 `topic: ${session.topic}`,
                 `status: ${getSessionStatusLabel(session)}`,
                 `updatedAt: ${formatTimestamp(session.updatedAt)}`,

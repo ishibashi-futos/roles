@@ -236,7 +236,10 @@ const buildDiscussionCopyText = () => {
   return [
     "# Meta",
     "",
-    "- テーマ",
+    "- セッションタイトル",
+    state.session.title,
+    "",
+    "- 初期入力",
     state.session.topic,
     "",
     "- Phase 2 状態",

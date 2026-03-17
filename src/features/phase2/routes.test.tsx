@@ -8,6 +8,7 @@ import type {
 } from "../../shared/workflow-types";
 import type { FacilitatorAgent, JudgeAgent, RoleAgent } from "./agents";
 import type { RequirementAgent } from "../phase1/requirement-agent";
+import type { SessionTitleAgent } from "../phase1/session-title-agent";
 import {
   buildFacilitatorSystemPrompt,
   buildJudgeSystemPrompt,
@@ -67,6 +68,18 @@ const completedResult: Phase1Result = {
 };
 
 const createTestRepository = () => new WorkflowSessionRepository(":memory:");
+
+const sessionTitleAgent: SessionTitleAgent = {
+  async generateTitle() {
+    return "営業行動の整理";
+  },
+};
+
+const createTestApp = (options: Parameters<typeof createApp>[0] = {}) =>
+  createApp({
+    sessionTitleAgent,
+    ...options,
+  });
 
 const completeImmediatelyRequirementAgent: RequirementAgent = {
   async decide() {
@@ -140,7 +153,7 @@ describe("phase2 output language prompts", () => {
 
 describe("phase2 routes", () => {
   test("Arena ページで favicon と UI ロゴを参照する", async () => {
-    const app = createApp({
+    const app = createTestApp({
       repository: createTestRepository(),
       requirementAgent: completeImmediatelyRequirementAgent,
       facilitatorAgent: {
@@ -174,7 +187,7 @@ describe("phase2 routes", () => {
   });
 
   test("createApp でも icon.svg を静的配信できる", async () => {
-    const app = createApp({
+    const app = createTestApp({
       repository: createTestRepository(),
       requirementAgent: completeImmediatelyRequirementAgent,
       facilitatorAgent: {
@@ -227,7 +240,7 @@ describe("phase2 routes", () => {
       },
     };
 
-    const app = createApp({
+    const app = createTestApp({
       repository: createTestRepository(),
       requirementAgent: completeImmediatelyRequirementAgent,
       facilitatorAgent,
@@ -270,7 +283,7 @@ describe("phase2 routes", () => {
   });
 
   test("Phase1 未完了では開始できない", async () => {
-    const app = createApp({
+    const app = createTestApp({
       repository: createTestRepository(),
       requirementAgent: {
         async decide() {
@@ -337,7 +350,7 @@ describe("phase2 routes", () => {
       },
     };
 
-    const app = createApp({
+    const app = createTestApp({
       repository: createTestRepository(),
       requirementAgent: completeImmediatelyRequirementAgent,
       facilitatorAgent,
@@ -424,7 +437,7 @@ describe("phase2 routes", () => {
       },
     };
 
-    const app = createApp({
+    const app = createTestApp({
       repository: createTestRepository(),
       requirementAgent: completeImmediatelyRequirementAgent,
       facilitatorAgent,
@@ -598,7 +611,7 @@ describe("phase2 routes", () => {
       },
     };
 
-    const app = createApp({
+    const app = createTestApp({
       repository: createTestRepository(),
       requirementAgent: completeImmediatelyRequirementAgent,
       facilitatorAgent,

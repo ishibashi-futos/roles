@@ -10,6 +10,10 @@ import {
   createRequirementAgentFromEnv,
   type RequirementAgent,
 } from "./features/phase1/requirement-agent";
+import {
+  createSessionTitleAgentFromEnv,
+  type SessionTitleAgent,
+} from "./features/phase1/session-title-agent";
 import { Phase1Service } from "./features/phase1/service";
 import {
   createFallbackPhase3Agent,
@@ -23,6 +27,7 @@ import { WorkflowSessionRepository } from "./shared/workflow-session-repository"
 export type CreateRuntimeOptions = {
   repository?: WorkflowSessionRepository;
   requirementAgent?: RequirementAgent;
+  sessionTitleAgent?: SessionTitleAgent;
   facilitatorAgent?: FacilitatorAgent;
   roleAgent?: RoleAgent;
   judgeAgent?: JudgeAgent;
@@ -37,6 +42,8 @@ export const createRuntime = (options: CreateRuntimeOptions = {}) => {
   const repository = options.repository ?? new WorkflowSessionRepository();
   const requirementAgent =
     options.requirementAgent ?? safelyCreateRequirementAgentFromEnv();
+  const sessionTitleAgent =
+    options.sessionTitleAgent ?? safelyCreateSessionTitleAgentFromEnv();
   const phase2Agents =
     options.facilitatorAgent && options.roleAgent && options.judgeAgent
       ? {
@@ -47,9 +54,14 @@ export const createRuntime = (options: CreateRuntimeOptions = {}) => {
       : safelyCreatePhase2AgentsFromEnv();
   const reportAgent = options.reportAgent ?? safelyCreatePhase3AgentFromEnv();
 
-  const phase1Service = new Phase1Service(repository, requirementAgent, {
-    maxUserReplyCount: options.maxUserReplyCount,
-  });
+  const phase1Service = new Phase1Service(
+    repository,
+    requirementAgent,
+    sessionTitleAgent,
+    {
+      maxUserReplyCount: options.maxUserReplyCount,
+    },
+  );
   const phase3Service = new Phase3Service(repository, reportAgent, {
     maxRetryCount: options.maxRetryCount,
   });
@@ -102,6 +114,18 @@ const safelyCreateRequirementAgentFromEnv = () => {
         );
       },
     } satisfies RequirementAgent;
+  }
+};
+
+const safelyCreateSessionTitleAgentFromEnv = () => {
+  try {
+    return createSessionTitleAgentFromEnv();
+  } catch {
+    return {
+      async generateTitle() {
+        throw new Error("failed to generate session title.");
+      },
+    } satisfies SessionTitleAgent;
   }
 };
 

@@ -2,6 +2,7 @@ import "../../test/silence-runtime";
 import { describe, expect, test } from "bun:test";
 import { WorkflowSessionRepository } from "../../shared/workflow-session-repository";
 import type { RequirementAgent } from "./requirement-agent";
+import type { SessionTitleAgent } from "./session-title-agent";
 import { Phase1Service } from "./service";
 
 const completedResult = {
@@ -54,6 +55,12 @@ const completedResult = {
   ],
 };
 
+const sessionTitleAgent: SessionTitleAgent = {
+  async generateTitle(input) {
+    return input.forkMessage ? "経営判断を優先する営業設計" : "営業行動の整理";
+  },
+};
+
 describe("Phase1Service", () => {
   test("stale processing を回復して reply を受け付ける", async () => {
     const repository = new WorkflowSessionRepository(":memory:");
@@ -66,10 +73,13 @@ describe("Phase1Service", () => {
         };
       },
     };
-    const service = new Phase1Service(repository, agent, {
+    const service = new Phase1Service(repository, agent, sessionTitleAgent, {
       staleProcessingTimeoutMs: 0,
     });
-    const session = repository.createSession("営業行動を整理したい");
+    const session = repository.createSession({
+      title: "営業行動の整理",
+      topic: "営業行動を整理したい",
+    });
     repository.setPhase1Processing(session.id, true);
 
     service.submitReply(session.id, "現場負荷は増やしたくありません。");
@@ -87,9 +97,9 @@ describe("Phase1Service", () => {
         throw new Error("LLM request timed out.");
       },
     };
-    const service = new Phase1Service(repository, agent);
+    const service = new Phase1Service(repository, agent, sessionTitleAgent);
 
-    const session = service.createSession("営業行動を整理したい");
+    const session = await service.createSession("営業行動を整理したい");
     await Bun.sleep(0);
 
     const latest = service.getSession(session.id);
@@ -123,9 +133,9 @@ describe("Phase1Service", () => {
         };
       },
     };
-    const service = new Phase1Service(repository, agent);
+    const service = new Phase1Service(repository, agent, sessionTitleAgent);
 
-    const session = service.createSession("営業行動を整理したい");
+    const session = await service.createSession("営業行動を整理したい");
     await Bun.sleep(0);
 
     service.submitReply(session.id, "経営指標の整理を優先したいです。");
@@ -153,18 +163,19 @@ describe("Phase1Service", () => {
         };
       },
     };
-    const service = new Phase1Service(repository, agent);
+    const service = new Phase1Service(repository, agent, sessionTitleAgent);
 
-    const session = service.createSession("営業行動を整理したい");
+    const session = await service.createSession("営業行動を整理したい");
     await Bun.sleep(0);
 
-    const nextSession = service.createSessionFromExistingChat(
+    const nextSession = await service.createSessionFromExistingChat(
       session.id,
       "現場運用より経営判断を優先したいです。",
     );
     await Bun.sleep(0);
 
     const latest = service.getSession(nextSession.id);
+    expect(latest?.title).toBe("経営判断を優先する営業設計");
     expect(latest?.topic).toBe("営業行動を整理したい");
     expect(
       latest?.phase1.messages.some(
@@ -179,5 +190,29 @@ describe("Phase1Service", () => {
     ).toBe(true);
     expect(latest?.phase2.messages).toEqual([]);
     expect(latest?.phase1.userReplyCount).toBe(1);
+  });
+
+  test("タイトル生成に失敗した場合はセッションを作成しない", async () => {
+    const repository = new WorkflowSessionRepository(":memory:");
+    const agent: RequirementAgent = {
+      async decide() {
+        return {
+          kind: "complete",
+          message: "定義がまとまりました。",
+          result: completedResult,
+        };
+      },
+    };
+    const failingTitleAgent: SessionTitleAgent = {
+      async generateTitle() {
+        throw new Error("upstream failed");
+      },
+    };
+    const service = new Phase1Service(repository, agent, failingTitleAgent);
+
+    await expect(service.createSession("営業行動を整理したい")).rejects.toThrow(
+      "failed to generate session title.",
+    );
+    expect(repository.listSessions()).toHaveLength(0);
   });
 });

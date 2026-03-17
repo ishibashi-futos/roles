@@ -64,7 +64,11 @@ const ReportPage = ({ sessionId }: { sessionId: string }) => (
             </p>
             <div class="mt-4 space-y-4 text-sm text-slate-700">
               <div>
-                <p class="text-slate-400">テーマ</p>
+                <p class="text-slate-400">セッションタイトル</p>
+                <p id="title-text" class="mt-1 whitespace-pre-wrap" />
+              </div>
+              <div>
+                <p class="text-slate-400">初期入力</p>
                 <p id="topic-text" class="mt-1 whitespace-pre-wrap" />
               </div>
               <div>
@@ -160,6 +164,7 @@ const state = {
 };
 
 const statusText = document.getElementById("status-text");
+const titleText = document.getElementById("title-text");
 const topicText = document.getElementById("topic-text");
 const completionReason = document.getElementById("completion-reason");
 const unresolvedPoints = document.getElementById("unresolved-points");
@@ -212,6 +217,7 @@ const renderStatusText = () => {
 };
 
 const renderMeta = () => {
+  titleText.textContent = state.phaseState.title;
   topicText.textContent = state.phaseState.topic;
   completionReason.textContent = completionReasonLabel(state.phaseState.phase2.completionReason);
   unresolvedPoints.textContent = state.phaseState.phase2.hasUnresolvedPoints ? "あり" : "なし";
@@ -226,7 +232,10 @@ const buildCopyText = () => {
   return [
     "# Meta",
     "",
-    "- テーマ",
+    "- セッションタイトル",
+    state.phaseState.title,
+    "",
+    "- 初期入力",
     state.phaseState.topic,
     "",
     "- Phase 2 完了理由",
@@ -476,6 +485,7 @@ const buildPhase3StateResponse = (
   session: NonNullable<ReturnType<Phase3Service["getSession"]>>,
 ) => ({
   sessionId: session.id,
+  title: session.title,
   topic: session.topic,
   phase2: {
     status: session.phase2.status,

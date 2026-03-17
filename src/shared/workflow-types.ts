@@ -126,6 +126,7 @@ export type Phase3State = {
 
 export type WorkflowSession = {
   id: string;
+  title: string;
   topic: string;
   phase1: Phase1State;
   phase2: Phase2State;
@@ -140,6 +141,7 @@ export type Phase1SseEvent =
       event: "session_created";
       data: {
         sessionId: string;
+        title: string;
         topic: string;
       };
     }

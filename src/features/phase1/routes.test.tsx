@@ -2,6 +2,7 @@ import "../../test/silence-runtime";
 import { describe, expect, test } from "bun:test";
 import { createPhase1App } from "./routes";
 import type { RequirementAgent } from "./requirement-agent";
+import type { SessionTitleAgent } from "./session-title-agent";
 import {
   buildRequirementAgentInstruction,
   buildRequirementAgentSystemPrompt,
@@ -61,6 +62,18 @@ const completedResult = {
 };
 
 const createTestRepository = () => new WorkflowSessionRepository(":memory:");
+
+const sessionTitleAgent: SessionTitleAgent = {
+  async generateTitle(input) {
+    return input.forkMessage ? "経営判断を優先する営業設計" : "営業行動の整理";
+  },
+};
+
+const createTestApp = (options: Parameters<typeof createPhase1App>[0] = {}) =>
+  createPhase1App({
+    sessionTitleAgent,
+    ...options,
+  });
 
 describe("parseRequirementAgentDecision", () => {
   test("complete の JSON を解釈できる", () => {
@@ -164,7 +177,7 @@ describe("output language", () => {
 
 describe("development reload", () => {
   test("トップページに開発用リロードスクリプトを含む", async () => {
-    const app = createPhase1App({
+    const app = createTestApp({
       repository: createTestRepository(),
     });
 
@@ -175,7 +188,7 @@ describe("development reload", () => {
   });
 
   test("開発用サーバ状態 API を返す", async () => {
-    const app = createPhase1App({
+    const app = createTestApp({
       repository: createTestRepository(),
     });
 
@@ -188,7 +201,7 @@ describe("development reload", () => {
   });
 
   test("開発用リロードスクリプトを静的配信する", async () => {
-    const app = createPhase1App({
+    const app = createTestApp({
       repository: createTestRepository(),
     });
 
@@ -204,7 +217,7 @@ describe("development reload", () => {
 
 describe("phase1 routes", () => {
   test("トップページで favicon とホーム画面を表示する", async () => {
-    const app = createPhase1App({
+    const app = createTestApp({
       repository: createTestRepository(),
     });
 
@@ -221,7 +234,7 @@ describe("phase1 routes", () => {
   });
 
   test("新規セッション画面を表示できる", async () => {
-    const app = createPhase1App({
+    const app = createTestApp({
       repository: createTestRepository(),
     });
 
@@ -240,7 +253,7 @@ describe("phase1 routes", () => {
   });
 
   test("icon.svg を静的配信できる", async () => {
-    const app = createPhase1App({
+    const app = createTestApp({
       repository: createTestRepository(),
     });
 
@@ -261,7 +274,7 @@ describe("phase1 routes", () => {
       },
     };
 
-    const app = createPhase1App({
+    const app = createTestApp({
       requirementAgent: agent,
       repository: createTestRepository(),
     });
@@ -278,6 +291,34 @@ describe("phase1 routes", () => {
     expect(response.status).toBe(201);
     const payload = (await response.json()) as { sessionId: string };
     expect(payload.sessionId).toBeString();
+  });
+
+  test("タイトル生成失敗時はセッションを作成しない", async () => {
+    const repository = createTestRepository();
+    const app = createTestApp({
+      repository,
+      sessionTitleAgent: {
+        async generateTitle() {
+          throw new Error("upstream failed");
+        },
+      },
+    });
+
+    const response = await app.request("/api/phase1/sessions", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        topic: "営業行動をデータ化したい",
+      }),
+    });
+
+    expect(response.status).toBe(500);
+    expect(await response.json()).toEqual({
+      message: "failed to generate session title.",
+    });
+    expect(repository.listSessions()).toHaveLength(0);
   });
 
   test("追加回答で完了状態にできる", async () => {
@@ -299,7 +340,7 @@ describe("phase1 routes", () => {
       },
     };
 
-    const app = createPhase1App({
+    const app = createTestApp({
       requirementAgent: agent,
       repository: createTestRepository(),
     });
@@ -343,7 +384,7 @@ describe("phase1 routes", () => {
   });
 
   test("既存セッションを個別ページで再開できる", async () => {
-    const app = createPhase1App({
+    const app = createTestApp({
       requirementAgent: {
         async decide() {
           return {
@@ -378,7 +419,7 @@ describe("phase1 routes", () => {
 
   test("Phase1 完了後でも同じセッションで方向修正を送信できる", async () => {
     let callCount = 0;
-    const app = createPhase1App({
+    const app = createTestApp({
       requirementAgent: {
         async decide() {
           callCount += 1;
@@ -431,7 +472,7 @@ describe("phase1 routes", () => {
 
   test("Phase1 完了済みセッションから新しいセッションを作成できる", async () => {
     const repository = createTestRepository();
-    const app = createPhase1App({
+    const app = createTestApp({
       requirementAgent: {
         async decide() {
           return {
@@ -485,11 +526,14 @@ describe("phase1 routes", () => {
 
   test("セッションを削除できる", async () => {
     const repository = createTestRepository();
-    const app = createPhase1App({
+    const app = createTestApp({
       repository,
     });
 
-    const created = repository.createSession("営業行動をデータ化したい");
+    const created = repository.createSession({
+      title: "営業行動の整理",
+      topic: "営業行動をデータ化したい",
+    });
 
     const response = await app.request(`/api/sessions/${created.id}`, {
       method: "DELETE",
@@ -507,7 +551,7 @@ describe("phase1 routes", () => {
       },
     };
 
-    const app = createPhase1App({
+    const app = createTestApp({
       requirementAgent: agent,
       repository: createTestRepository(),
     });

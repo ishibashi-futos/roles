@@ -10,11 +10,16 @@ import { WorkflowSessionRepository } from "../../shared/workflow-session-reposit
 import type { WorkflowSession } from "../../shared/workflow-types";
 import type { RequirementAgent } from "./requirement-agent";
 import { createRequirementAgentFromEnv } from "./requirement-agent";
+import {
+  createSessionTitleAgentFromEnv,
+  type SessionTitleAgent,
+} from "./session-title-agent";
 import { Phase1Service } from "./service";
 import type { Phase1Result, RequirementMessage } from "./types";
 
 type CreatePhase1AppOptions = {
   requirementAgent?: RequirementAgent;
+  sessionTitleAgent?: SessionTitleAgent;
   repository?: WorkflowSessionRepository;
   maxUserReplyCount?: number;
 };
@@ -410,8 +415,11 @@ const HomePage = ({ sessions }: { sessions: WorkflowSession[] }) => (
                         <span class="text-xs text-slate-400">{session.id}</span>
                       </div>
                       <h3 class="mt-3 text-lg font-semibold text-slate-900">
-                        {session.topic}
+                        {session.title}
                       </h3>
+                      <p class="mt-2 text-sm leading-6 text-slate-500">
+                        {session.topic}
+                      </p>
                     </div>
                     <div class="shrink-0 text-sm text-slate-500">
                       <p>更新: {formatTimestamp(session.updatedAt)}</p>
@@ -498,7 +506,12 @@ const SessionPage = ({ session }: { session: WorkflowSession | null }) => (
 
         <section class="mt-8">
           <div class="flex items-center justify-between">
-            <h2 class="text-lg font-semibold">対話ログ</h2>
+            <div>
+              <h2 class="text-lg font-semibold">対話ログ</h2>
+              {session ? (
+                <p class="mt-1 text-sm text-slate-300">{session.title}</p>
+              ) : null}
+            </div>
             <span
               id="session-badge"
               data-session-id={session?.id ?? ""}
@@ -927,11 +940,20 @@ export const registerPhase1Routes = (
       return c.json({ message: "topic is required." }, 400);
     }
 
-    const session = service.createSession(topic);
-    logger.info("Phase1 session creation response sent", {
-      sessionId: session.id,
-    });
-    return c.json({ sessionId: session.id }, 201);
+    try {
+      const session = await service.createSession(topic);
+      logger.info("Phase1 session creation response sent", {
+        sessionId: session.id,
+      });
+      return c.json({ sessionId: session.id }, 201);
+    } catch (error) {
+      const messageText =
+        error instanceof Error ? error.message : "unexpected_error";
+      logger.error("Phase1 session creation failed", {
+        message: messageText,
+      });
+      return c.json({ message: messageText }, 500);
+    }
   });
 
   app.post("/api/phase1/sessions/:sessionId/messages", async (c) => {
@@ -990,7 +1012,10 @@ export const registerPhase1Routes = (
     }
 
     try {
-      const session = service.createSessionFromExistingChat(sessionId, message);
+      const session = await service.createSessionFromExistingChat(
+        sessionId,
+        message,
+      );
       logger.info("Phase1 follow-up session response sent", {
         sourceSessionId: sessionId,
         newSessionId: session.id,
@@ -1134,10 +1159,17 @@ export const createPhase1App = (options: CreatePhase1AppOptions = {}) => {
   registerDevReloadRoutes(app);
   const requirementAgent =
     options.requirementAgent ?? safelyCreateRequirementAgentFromEnv();
+  const sessionTitleAgent =
+    options.sessionTitleAgent ?? safelyCreateSessionTitleAgentFromEnv();
   const repository = options.repository ?? new WorkflowSessionRepository();
-  const service = new Phase1Service(repository, requirementAgent, {
-    maxUserReplyCount: options.maxUserReplyCount,
-  });
+  const service = new Phase1Service(
+    repository,
+    requirementAgent,
+    sessionTitleAgent,
+    {
+      maxUserReplyCount: options.maxUserReplyCount,
+    },
+  );
 
   registerPhase1Routes(app, {
     service,
@@ -1152,5 +1184,17 @@ const safelyCreateRequirementAgentFromEnv = () => {
     return createRequirementAgentFromEnv();
   } catch {
     return createFallbackAgent();
+  }
+};
+
+const safelyCreateSessionTitleAgentFromEnv = () => {
+  try {
+    return createSessionTitleAgentFromEnv();
+  } catch {
+    return {
+      async generateTitle() {
+        throw new Error("failed to generate session title.");
+      },
+    } satisfies SessionTitleAgent;
   }
 };

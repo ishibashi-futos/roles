@@ -2,6 +2,7 @@ import "./test/silence-runtime";
 import { afterEach, describe, expect, test } from "bun:test";
 import { runCli } from "./cli";
 import type { RequirementAgent } from "./features/phase1/requirement-agent";
+import type { SessionTitleAgent } from "./features/phase1/session-title-agent";
 import type {
   FacilitatorAgent,
   JudgeAgent,
@@ -87,6 +88,7 @@ const createTestRuntime = (
     roleAgent?: RoleAgent;
     judgeAgent?: JudgeAgent;
     reportAgent?: ReportAgent;
+    sessionTitleAgent?: SessionTitleAgent;
   } = {},
 ) => {
   const repository = new WorkflowSessionRepository(":memory:");
@@ -111,6 +113,15 @@ const createTestRuntime = (
           };
         },
       } satisfies RequirementAgent),
+    sessionTitleAgent:
+      overrides.sessionTitleAgent ??
+      ({
+        async generateTitle(input) {
+          return input.forkMessage
+            ? "経営判断を優先する営業設計"
+            : "営業行動の整理";
+        },
+      } satisfies SessionTitleAgent),
     facilitatorAgent:
       overrides.facilitatorAgent ??
       ({
@@ -273,7 +284,10 @@ describe("cli", () => {
 
   test("list と show で保存済みセッションを確認できる", async () => {
     const runtime = createTestRuntime();
-    const session = runtime.repository.createSession("在庫最適化");
+    const session = runtime.repository.createSession({
+      title: "在庫最適化",
+      topic: "在庫最適化",
+    });
 
     const listResult = createIo();
     const listExitCode = await runCli(["list"], {
@@ -300,7 +314,10 @@ describe("cli", () => {
 
   test("start-discussion --wait で議論イベントを表示できる", async () => {
     const runtime = createTestRuntime();
-    const session = runtime.repository.createSession("営業行動を整理したい");
+    const session = runtime.repository.createSession({
+      title: "営業行動の整理",
+      topic: "営業行動を整理したい",
+    });
     runtime.repository.completePhase1(
       session.id,
       "定義がまとまりました。",
@@ -325,7 +342,10 @@ describe("cli", () => {
 
   test("report --wait で idle の Phase3 を開始して Markdown を表示できる", async () => {
     const runtime = createTestRuntime();
-    const session = runtime.repository.createSession("営業行動を整理したい");
+    const session = runtime.repository.createSession({
+      title: "営業行動の整理",
+      topic: "営業行動を整理したい",
+    });
     runtime.repository.completePhase1(
       session.id,
       "定義がまとまりました。",
@@ -364,7 +384,10 @@ describe("cli", () => {
 
   test("show で Phase1 の processing 状態を表示できる", async () => {
     const runtime = createTestRuntime();
-    const session = runtime.repository.createSession("営業行動を整理したい");
+    const session = runtime.repository.createSession({
+      title: "営業行動の整理",
+      topic: "営業行動を整理したい",
+    });
     runtime.repository.setPhase1Processing(session.id, true);
 
     const { io, stdout } = createIo();

@@ -3,6 +3,7 @@ import { WorkflowSessionRepository } from "../../shared/workflow-session-reposit
 import { getLlmTimeoutMsFromEnv } from "../../shared/llm/openai-compatible-client";
 import type { WorkflowSession } from "../../shared/workflow-types";
 import type { RequirementAgent } from "./requirement-agent";
+import type { SessionTitleAgent } from "./session-title-agent";
 
 type Phase1ServiceOptions = {
   maxUserReplyCount?: number;
@@ -16,6 +17,7 @@ export class Phase1Service {
   constructor(
     private readonly store: WorkflowSessionRepository,
     private readonly requirementAgent: RequirementAgent,
+    private readonly sessionTitleAgent: SessionTitleAgent,
     options: Phase1ServiceOptions = {},
   ) {
     this.maxUserReplyCount = options.maxUserReplyCount ?? 3;
@@ -24,17 +26,22 @@ export class Phase1Service {
       Math.max(getLlmTimeoutMsFromEnv() * 2, 120_000);
   }
 
-  createSession(topic: string) {
-    const session = this.store.createSession(topic);
+  async createSession(topic: string) {
+    const title = await this.generateSessionTitle({
+      topic,
+      userMessages: [topic],
+    });
+    const session = this.store.createSession({ title, topic });
     logger.info("Phase1 session created", {
       sessionId: session.id,
+      title,
       topic,
     });
     void this.process(session.id);
     return session;
   }
 
-  createSessionFromExistingChat(sessionId: string, message: string) {
+  async createSessionFromExistingChat(sessionId: string, message: string) {
     const session = this.getLatestSession(sessionId);
 
     if (!session) {
@@ -45,7 +52,21 @@ export class Phase1Service {
       throw new Error("session_phase1_not_completed");
     }
 
+    const title = await this.generateSessionTitle({
+      topic: session.topic,
+      userMessages: [
+        ...session.phase1.messages
+          .filter((entry) => entry.role === "user")
+          .map((entry) => entry.content),
+        message,
+      ],
+      requirementTheme: session.phase1.result.requirements.theme,
+      requirementObjective: session.phase1.result.requirements.objective,
+      forkMessage: message,
+    });
+
     const nextSession = this.store.createSessionFromPhase1Messages({
+      title,
       topic: session.topic,
       messages: [
         ...session.phase1.messages,
@@ -57,6 +78,7 @@ export class Phase1Service {
     logger.info("Phase1 follow-up session created", {
       sourceSessionId: sessionId,
       newSessionId: nextSession.id,
+      title,
       messageLength: message.length,
     });
     void this.process(nextSession.id);
@@ -200,5 +222,21 @@ export class Phase1Service {
     }
 
     return Date.now() - updatedAt >= this.staleProcessingTimeoutMs;
+  }
+
+  private async generateSessionTitle(
+    input: Parameters<SessionTitleAgent["generateTitle"]>[0],
+  ) {
+    try {
+      return await this.sessionTitleAgent.generateTitle(input);
+    } catch (error) {
+      logger.error("Session title generation failed", {
+        topic: input.topic,
+        userMessageCount: input.userMessages.length,
+        hasForkMessage: Boolean(input.forkMessage),
+        error: error instanceof Error ? error.message : String(error),
+      });
+      throw new Error("failed to generate session title.");
+    }
   }
 }

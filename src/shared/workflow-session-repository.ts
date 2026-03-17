@@ -21,6 +21,7 @@ import {
 
 type SessionRow = {
   id: string;
+  title: string;
   topic: string;
   phase1_status: string;
   phase1_messages: string;
@@ -79,6 +80,7 @@ const parseJson = <T>(value: string | null, fallback: T): T => {
 
 const mapSession = (row: SessionRow): WorkflowSession => ({
   id: row.id,
+  title: row.title,
   topic: row.topic,
   phase1: {
     status: row.phase1_status as WorkflowSession["phase1"]["status"],
@@ -143,6 +145,7 @@ export class WorkflowSessionRepository {
     this.database.exec(`
       CREATE TABLE IF NOT EXISTS sessions (
         id TEXT PRIMARY KEY,
+        title TEXT NOT NULL,
         topic TEXT NOT NULL,
         phase1_status TEXT NOT NULL,
         phase1_messages TEXT NOT NULL,
@@ -184,14 +187,15 @@ export class WorkflowSessionRepository {
     `);
   }
 
-  createSession(topic: string) {
+  createSession(input: { title: string; topic: string }) {
     const timestamp = now();
     const session: WorkflowSession = {
       id: createSessionId(),
-      topic,
+      title: input.title,
+      topic: input.topic,
       phase1: {
         status: "collecting_requirements",
-        messages: [{ role: "user", content: topic }],
+        messages: [{ role: "user", content: input.topic }],
         result: null,
         userReplyCount: 0,
         isProcessing: false,
@@ -203,56 +207,14 @@ export class WorkflowSessionRepository {
       updatedAt: timestamp,
     };
 
-    this.database
-      .query(
-        `INSERT INTO sessions (
-          id, topic, phase1_status, phase1_messages, phase1_result,
-          phase1_user_reply_count, phase1_is_processing, phase1_error_message,
-        phase2_status, phase2_current_discussion_point_index, phase2_current_turn_count,
-        phase2_total_turn_count, phase2_max_turns_per_point_override,
-        phase2_max_total_turns_override, phase2_messages, phase2_point_statuses,
-        phase2_judge_decisions, phase2_last_judge_decision, phase2_completion_reason,
-          phase2_is_processing, phase2_error, phase3_status, phase3_report_markdown,
-          phase3_completion_reason, phase3_is_processing, phase3_error_message,
-          created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      )
-      .run(
-        session.id,
-        session.topic,
-        session.phase1.status,
-        serialize(session.phase1.messages),
-        null,
-        session.phase1.userReplyCount,
-        Number(session.phase1.isProcessing),
-        session.phase1.errorMessage,
-        session.phase2.status,
-        session.phase2.currentDiscussionPointIndex,
-        session.phase2.currentTurnCount,
-        session.phase2.totalTurnCount,
-        session.phase2.maxTurnsPerPointOverride,
-        session.phase2.maxTotalTurnsOverride,
-        serialize(session.phase2.messages),
-        serialize(session.phase2.pointStatuses),
-        serialize(session.phase2.judgeDecisions),
-        null,
-        session.phase2.completionReason,
-        Number(session.phase2.isProcessing),
-        null,
-        session.phase3.status,
-        session.phase3.reportMarkdown,
-        session.phase3.completionReason,
-        Number(session.phase3.isProcessing),
-        session.phase3.errorMessage,
-        session.createdAt,
-        session.updatedAt,
-      );
+    this.insertSession(session);
 
     this.pushEvent(session.id, {
       id: 0,
       event: "session_created",
       data: {
         sessionId: session.id,
+        title: session.title,
         topic: session.topic,
       },
     });
@@ -261,6 +223,7 @@ export class WorkflowSessionRepository {
   }
 
   createSessionFromPhase1Messages(input: {
+    title: string;
     topic: string;
     messages: RequirementMessage[];
     userReplyCount?: number;
@@ -268,6 +231,7 @@ export class WorkflowSessionRepository {
     const timestamp = now();
     const session: WorkflowSession = {
       id: createSessionId(),
+      title: input.title,
       topic: input.topic,
       phase1: {
         status: "collecting_requirements",
@@ -283,56 +247,14 @@ export class WorkflowSessionRepository {
       updatedAt: timestamp,
     };
 
-    this.database
-      .query(
-        `INSERT INTO sessions (
-          id, topic, phase1_status, phase1_messages, phase1_result,
-          phase1_user_reply_count, phase1_is_processing, phase1_error_message,
-        phase2_status, phase2_current_discussion_point_index, phase2_current_turn_count,
-        phase2_total_turn_count, phase2_max_turns_per_point_override,
-        phase2_max_total_turns_override, phase2_messages, phase2_point_statuses,
-        phase2_judge_decisions, phase2_last_judge_decision, phase2_completion_reason,
-          phase2_is_processing, phase2_error, phase3_status, phase3_report_markdown,
-          phase3_completion_reason, phase3_is_processing, phase3_error_message,
-          created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      )
-      .run(
-        session.id,
-        session.topic,
-        session.phase1.status,
-        serialize(session.phase1.messages),
-        null,
-        session.phase1.userReplyCount,
-        Number(session.phase1.isProcessing),
-        session.phase1.errorMessage,
-        session.phase2.status,
-        session.phase2.currentDiscussionPointIndex,
-        session.phase2.currentTurnCount,
-        session.phase2.totalTurnCount,
-        session.phase2.maxTurnsPerPointOverride,
-        session.phase2.maxTotalTurnsOverride,
-        serialize(session.phase2.messages),
-        serialize(session.phase2.pointStatuses),
-        serialize(session.phase2.judgeDecisions),
-        null,
-        session.phase2.completionReason,
-        Number(session.phase2.isProcessing),
-        null,
-        session.phase3.status,
-        session.phase3.reportMarkdown,
-        session.phase3.completionReason,
-        Number(session.phase3.isProcessing),
-        session.phase3.errorMessage,
-        session.createdAt,
-        session.updatedAt,
-      );
+    this.insertSession(session);
 
     this.pushEvent(session.id, {
       id: 0,
       event: "session_created",
       data: {
         sessionId: session.id,
+        title: session.title,
         topic: session.topic,
       },
     });
@@ -355,6 +277,7 @@ export class WorkflowSessionRepository {
     const timestamp = now();
     const session: WorkflowSession = {
       id: createSessionId(),
+      title: sourceSession.title,
       topic: sourceSession.topic,
       phase1: {
         status: "completed",
@@ -388,58 +311,14 @@ export class WorkflowSessionRepository {
       updatedAt: timestamp,
     };
 
-    this.database
-      .query(
-        `INSERT INTO sessions (
-          id, topic, phase1_status, phase1_messages, phase1_result,
-          phase1_user_reply_count, phase1_is_processing, phase1_error_message,
-          phase2_status, phase2_current_discussion_point_index, phase2_current_turn_count,
-          phase2_total_turn_count, phase2_max_turns_per_point_override,
-          phase2_max_total_turns_override, phase2_messages, phase2_point_statuses,
-          phase2_judge_decisions, phase2_last_judge_decision, phase2_completion_reason,
-          phase2_is_processing, phase2_error, phase3_status, phase3_report_markdown,
-          phase3_completion_reason, phase3_is_processing, phase3_error_message,
-          created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      )
-      .run(
-        session.id,
-        session.topic,
-        session.phase1.status,
-        serialize(session.phase1.messages),
-        serialize(session.phase1.result),
-        session.phase1.userReplyCount,
-        Number(session.phase1.isProcessing),
-        session.phase1.errorMessage,
-        session.phase2.status,
-        session.phase2.currentDiscussionPointIndex,
-        session.phase2.currentTurnCount,
-        session.phase2.totalTurnCount,
-        session.phase2.maxTurnsPerPointOverride,
-        session.phase2.maxTotalTurnsOverride,
-        serialize(session.phase2.messages),
-        serialize(session.phase2.pointStatuses),
-        serialize(session.phase2.judgeDecisions),
-        session.phase2.lastJudgeDecision
-          ? serialize(session.phase2.lastJudgeDecision)
-          : null,
-        session.phase2.completionReason,
-        Number(session.phase2.isProcessing),
-        null,
-        session.phase3.status,
-        session.phase3.reportMarkdown,
-        session.phase3.completionReason,
-        Number(session.phase3.isProcessing),
-        session.phase3.errorMessage,
-        session.createdAt,
-        session.updatedAt,
-      );
+    this.insertSession(session);
 
     this.pushEvent(session.id, {
       id: 0,
       event: "session_created",
       data: {
         sessionId: session.id,
+        title: session.title,
         topic: session.topic,
       },
     });
@@ -883,6 +762,7 @@ export class WorkflowSessionRepository {
     this.database
       .query(
         `UPDATE sessions SET
+          title = ?,
           topic = ?,
           phase1_status = ?,
           phase1_messages = ?,
@@ -912,6 +792,7 @@ export class WorkflowSessionRepository {
         WHERE id = ?`,
       )
       .run(
+        session.title,
         session.topic,
         session.phase1.status,
         serialize(session.phase1.messages),
@@ -952,6 +833,10 @@ export class WorkflowSessionRepository {
 
     const missingColumns = [
       {
+        name: "title",
+        sql: "ALTER TABLE sessions ADD COLUMN title TEXT",
+      },
+      {
         name: "phase2_max_turns_per_point_override",
         sql: "ALTER TABLE sessions ADD COLUMN phase2_max_turns_per_point_override INTEGER",
       },
@@ -991,6 +876,62 @@ export class WorkflowSessionRepository {
       }
       this.database.exec(column.sql);
     }
+
+    if (!columns.has("title")) {
+      this.database.exec(
+        `UPDATE sessions SET title = topic WHERE title IS NULL`,
+      );
+    }
+  }
+
+  private insertSession(session: WorkflowSession) {
+    this.database
+      .query(
+        `INSERT INTO sessions (
+          id, title, topic, phase1_status, phase1_messages, phase1_result,
+          phase1_user_reply_count, phase1_is_processing, phase1_error_message,
+          phase2_status, phase2_current_discussion_point_index, phase2_current_turn_count,
+          phase2_total_turn_count, phase2_max_turns_per_point_override,
+          phase2_max_total_turns_override, phase2_messages, phase2_point_statuses,
+          phase2_judge_decisions, phase2_last_judge_decision, phase2_completion_reason,
+          phase2_is_processing, phase2_error, phase3_status, phase3_report_markdown,
+          phase3_completion_reason, phase3_is_processing, phase3_error_message,
+          created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .run(
+        session.id,
+        session.title,
+        session.topic,
+        session.phase1.status,
+        serialize(session.phase1.messages),
+        session.phase1.result ? serialize(session.phase1.result) : null,
+        session.phase1.userReplyCount,
+        Number(session.phase1.isProcessing),
+        session.phase1.errorMessage,
+        session.phase2.status,
+        session.phase2.currentDiscussionPointIndex,
+        session.phase2.currentTurnCount,
+        session.phase2.totalTurnCount,
+        session.phase2.maxTurnsPerPointOverride,
+        session.phase2.maxTotalTurnsOverride,
+        serialize(session.phase2.messages),
+        serialize(session.phase2.pointStatuses),
+        serialize(session.phase2.judgeDecisions),
+        session.phase2.lastJudgeDecision
+          ? serialize(session.phase2.lastJudgeDecision)
+          : null,
+        session.phase2.completionReason,
+        Number(session.phase2.isProcessing),
+        session.phase2.error ? serialize(session.phase2.error) : null,
+        session.phase3.status,
+        session.phase3.reportMarkdown,
+        session.phase3.completionReason,
+        Number(session.phase3.isProcessing),
+        session.phase3.errorMessage,
+        session.createdAt,
+        session.updatedAt,
+      );
   }
 
   private pushEvent(sessionId: string, event: WorkflowSseEvent) {
