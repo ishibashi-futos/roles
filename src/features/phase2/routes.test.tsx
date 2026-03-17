@@ -133,9 +133,12 @@ describe("phase2 parsers", () => {
 
 describe("phase2 output language prompts", () => {
   test("ファシリテーターを en に切り替えられる", () => {
-    expect(buildFacilitatorSystemPrompt("en")).toContain(
-      "structured discussion in English",
-    );
+    const prompt = buildFacilitatorSystemPrompt("en");
+
+    expect(prompt).toContain("structured discussion in English");
+    expect(prompt).toContain("real-time exchange happening right now");
+    expect(prompt).toContain("Do not assign deadlines");
+    expect(prompt).toContain("one concise question or clarification");
   });
 
   test("ロールを en に切り替えられる", () => {
@@ -143,6 +146,11 @@ describe("phase2 output language prompts", () => {
 
     expect(prompt).toContain("speak in English");
     expect(prompt).toContain("Use the role definition from the user message");
+    expect(prompt).toContain(
+      "State your concerns, objections, conditions, or risks directly",
+    );
+    expect(prompt).toContain("Do not make unsolicited suggestions");
+    expect(prompt).toContain('Do not ask "may I", "should we"');
     expect(prompt).toContain("Do not agree too quickly");
     expect(prompt).toContain("Actively challenge weak assumptions");
     expect(prompt).not.toContain("Role name:");

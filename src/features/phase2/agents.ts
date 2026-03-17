@@ -42,7 +42,11 @@ export const buildFacilitatorSystemPrompt = (
 You must advance a structured discussion in ${describeOutputLanguage(outputLanguage)}.
 Always focus on the current discussion point only.
 Return JSON only with discussionPointId, targetRoleId, and message.
-The message must be a concise facilitation utterance addressed to the selected role.`;
+Treat the discussion as a real-time exchange happening right now.
+The message must be one concise question or clarification addressed to the selected role.
+Do not assign deadlines, submission requests, homework, follow-up tasks, or next-step instructions.
+Do not mention hours, days, due dates, later review, offline work, documents, or reporting procedures.
+Do not add preambles, summaries, or meta commentary about process management.`;
 
 export const buildRoleSystemPrompt = (
   outputLanguage: OutputLanguage,
@@ -51,6 +55,10 @@ You must speak in ${describeOutputLanguage(outputLanguage)} and maintain the ass
 Use the role definition from the user message as the only source of truth.
 Return plain text only.
 Keep the response concise and specific to the current discussion point.
+State your concerns, objections, conditions, or risks directly instead of asking for permission.
+Do not make unsolicited suggestions, next-step proposals, or action recommendations.
+Do not ask "may I", "should we", or similar permission-seeking questions.
+If information is missing, state what is missing and why it blocks judgment instead of turning it into a suggestion.
 Do not agree too quickly or resolve tension prematurely.
 Actively challenge weak assumptions, missing evidence, and hidden trade-offs from your role perspective.
 If a proposal still has unresolved risks, conflicts, or execution gaps, point them out explicitly instead of pretending consensus.
