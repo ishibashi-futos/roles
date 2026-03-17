@@ -169,6 +169,31 @@ describe("phase3 markdown", () => {
     expect(html).toContain("<table");
     expect(html).not.toContain("<script");
   });
+
+  test("番号付きリストを順序付きリストとして描画できる", () => {
+    const html = renderReportHtml(`# 決定事項
+
+1. 最初の結論
+2. 次の結論
+
+# 対立意見
+
+1. 負荷への懸念
+
+# 残課題
+
+1. 詳細設計`);
+
+    expect(html).toContain("<ol");
+    expect(html).toContain("<li");
+    expect(html).toContain("list-decimal");
+    expect(html).toContain("list-outside");
+    expect(html).toContain("pl-8");
+    expect(html).not.toContain("rounded-xl border border-slate-200");
+    expect(html).not.toContain(
+      '<p class="mt-4 text-sm leading-7 text-slate-700">1. 最初の結論',
+    );
+  });
 });
 
 describe("phase3 routes", () => {

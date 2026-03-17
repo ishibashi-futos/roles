@@ -23,13 +23,20 @@ const splitTableRow = (line: string) =>
     .map((cell) => cell.trim());
 
 const isHeading = (line: string) => /^#{1,6}\s+.+$/.test(line);
-const isListItem = (line: string) => /^\s*[-*]\s+.+$/.test(line);
+const isUnorderedListItem = (line: string) => /^\s*[-*]\s+.+$/.test(line);
+const isOrderedListItem = (line: string) => /^\s*\d+\.\s+.+$/.test(line);
+const isListItem = (line: string) =>
+  isUnorderedListItem(line) || isOrderedListItem(line);
 const isTableSeparator = (line: string) =>
   /^\s*\|?(\s*:?-{3,}:?\s*\|)+\s*:?-{3,}:?\s*\|?\s*$/.test(line);
 const looksLikeTable = (lines: string[], index: number) =>
   index + 1 < lines.length &&
   (lines[index] ?? "").includes("|") &&
   isTableSeparator(lines[index + 1] ?? "");
+const getOrderedListMarker = (line: string) => {
+  const match = line.match(/^\s*(\d+)\.\s+.+$/);
+  return match ? Number(match[1]) : null;
+};
 
 export const getRequiredReportSectionTitles = () => [
   ...REQUIRED_SECTION_TITLES,
@@ -109,16 +116,34 @@ export const renderReportHtml = (markdown: string) => {
 
     if (isListItem(line)) {
       const items: string[] = [];
-      while (index < lines.length && isListItem(lines[index] ?? "")) {
-        const item = (lines[index] ?? "").replace(/^\s*[-*]\s+/, "");
-        items.push(
-          `<li class="rounded-xl border border-slate-200 bg-white px-3 py-2">${renderInline(item)}</li>`,
-        );
+      const isOrderedList = isOrderedListItem(line);
+      const orderedListStart = isOrderedList
+        ? getOrderedListMarker(line)
+        : null;
+
+      while (
+        index < lines.length &&
+        (isOrderedList
+          ? isOrderedListItem(lines[index] ?? "")
+          : isUnorderedListItem(lines[index] ?? ""))
+      ) {
+        const item = isOrderedList
+          ? (lines[index] ?? "").replace(/^\s*\d+\.\s+/, "")
+          : (lines[index] ?? "").replace(/^\s*[-*]\s+/, "");
+        items.push(`<li>${renderInline(item)}</li>`);
         index += 1;
       }
       index -= 1;
+      const tagName = isOrderedList ? "ol" : "ul";
+      const startAttribute =
+        isOrderedList && orderedListStart && orderedListStart > 1
+          ? ` start="${orderedListStart}"`
+          : "";
+      const listClassName = isOrderedList
+        ? "mt-4 list-decimal list-outside space-y-3 pl-8 text-sm leading-7 text-slate-700 marker:font-semibold marker:text-slate-500"
+        : "mt-4 list-disc list-outside space-y-3 pl-8 text-sm leading-7 text-slate-700 marker:text-slate-500";
       parts.push(
-        `<ul class="mt-4 space-y-2 text-sm leading-7 text-slate-700">${items.join("")}</ul>`,
+        `<${tagName}${startAttribute} class="${listClassName}">${items.join("")}</${tagName}>`,
       );
       continue;
     }
