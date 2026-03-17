@@ -194,7 +194,7 @@ const completionReasonLabel = (reason) => {
 
 const canResumeDiscussion = () =>
   state.phaseState.phase2.status === "completed" &&
-  state.phaseState.phase2.completionReason === "circuit_breaker";
+  state.phaseState.phase2.hasUnresolvedPoints;
 
 const renderStatusText = () => {
   if (state.phaseState.phase2.status !== "completed") {

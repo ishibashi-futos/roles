@@ -97,7 +97,9 @@ export class Phase2Service {
     }
     if (
       session.phase2.status !== "completed" ||
-      session.phase2.completionReason !== "circuit_breaker"
+      !session.phase2.pointStatuses.some(
+        (pointStatus) => pointStatus.status !== "resolved",
+      )
     ) {
       throw new Error("phase2_not_resumable");
     }

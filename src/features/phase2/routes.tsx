@@ -198,7 +198,9 @@ const speakerClassByType = {
 
 const canResumeDiscussion = () =>
   state.session.phase2.status === "completed" &&
-  state.session.phase2.completionReason === "circuit_breaker";
+  state.session.phase2.pointStatuses.some(
+    (pointStatus) => pointStatus.status !== "resolved",
+  );
 
 const completionReasonLabel = (reason) => {
   if (reason === "resolved") {

@@ -634,4 +634,62 @@ describe("phase2 routes", () => {
 
     expect(response.status).toBe(409);
   });
+
+  test("未解決論点があれば completionReason に関係なく resume できる", async () => {
+    const repository = createTestRepository();
+    const app = createTestApp({
+      repository,
+      requirementAgent: completeImmediatelyRequirementAgent,
+      facilitatorAgent: {
+        async decide() {
+          throw new Error("unexpected");
+        },
+      },
+      roleAgent: {
+        async speak() {
+          throw new Error("unexpected");
+        },
+      },
+      judgeAgent: {
+        async decide() {
+          throw new Error("unexpected");
+        },
+      },
+    });
+    const sessionId = await createSession(app);
+
+    repository.markPhase2Started(sessionId);
+    repository.setPointStatus(sessionId, "point-1", "resolved");
+    repository.updatePhase2Counters(sessionId, {
+      currentDiscussionPointIndex: 1,
+      currentTurnCount: 2,
+      totalTurnCount: 4,
+    });
+    repository.completePhase2(sessionId, "resolved");
+
+    const response = await app.request(
+      `/api/sessions/${sessionId}/phase2/resume`,
+      {
+        method: "POST",
+      },
+    );
+
+    expect(response.status).toBe(201);
+    const payload = (await response.json()) as { sessionId: string };
+    expect(payload.sessionId).not.toBe(sessionId);
+
+    const resumedSession = repository.getSession(payload.sessionId);
+    expect(resumedSession).not.toBeNull();
+    if (!resumedSession) {
+      throw new Error("session_not_found");
+    }
+
+    expect(resumedSession.phase2.status).toBe("idle");
+    expect(resumedSession.phase2.completionReason).toBeNull();
+    expect(resumedSession.phase2.currentDiscussionPointIndex).toBe(1);
+    expect(resumedSession.phase2.pointStatuses).toEqual([
+      { discussionPointId: "point-1", status: "resolved" },
+      { discussionPointId: "point-2", status: "pending" },
+    ]);
+  });
 });

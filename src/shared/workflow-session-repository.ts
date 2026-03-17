@@ -298,7 +298,7 @@ export class WorkflowSessionRepository {
         messages: [...sourceSession.phase2.messages],
         pointStatuses: sourceSession.phase2.pointStatuses.map((status) => ({
           ...status,
-          status: status.status === "forced_stop" ? "pending" : status.status,
+          status: status.status === "resolved" ? "resolved" : "pending",
         })),
         judgeDecisions: [...sourceSession.phase2.judgeDecisions],
         lastJudgeDecision: sourceSession.phase2.lastJudgeDecision,
