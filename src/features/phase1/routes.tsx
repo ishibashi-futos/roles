@@ -70,6 +70,7 @@ const renderDiscussionStartButton = (sessionId: string) => (
 const renderResult = (
   result: Phase1Result | null,
   sessionId: string | null,
+  canStartDiscussion: boolean,
 ): Child => {
   if (!result) {
     return (
@@ -147,7 +148,9 @@ const renderResult = (
             </section>
           ))}
         </div>
-        {sessionId ? renderDiscussionStartButton(sessionId) : null}
+        {sessionId && canStartDiscussion
+          ? renderDiscussionStartButton(sessionId)
+          : null}
       </article>
     </section>
   );
@@ -500,6 +503,7 @@ const SessionPage = ({ session }: { session: WorkflowSession | null }) => (
               id="session-badge"
               data-session-id={session?.id ?? ""}
               data-session-status={session?.phase1.status ?? ""}
+              data-phase2-status={session?.phase2.status ?? ""}
               class="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-slate-300"
             >
               {session ? `Session: ${session.id}` : "Session: 未開始"}
@@ -513,7 +517,15 @@ const SessionPage = ({ session }: { session: WorkflowSession | null }) => (
 
       <section>
         <div id="result-panel">
-          {renderResult(session?.phase1.result ?? null, session?.id ?? null)}
+          {renderResult(
+            session?.phase1.result ?? null,
+            session?.id ?? null,
+            Boolean(
+              session &&
+                session.phase1.status === "completed" &&
+                session.phase2.status === "idle",
+            ),
+          )}
         </div>
       </section>
     </div>
@@ -526,6 +538,7 @@ const state = {
   sessionId: sessionBadge?.dataset.sessionId || "",
   eventSource: null,
   completed: sessionBadge?.dataset.sessionStatus === "completed",
+  phase2Status: sessionBadge?.dataset.phase2Status || "idle",
   seenEventIds: new Set(),
   awaitingResponse: false,
 };
@@ -578,7 +591,7 @@ const renderResult = (result) => {
     const owner = result.roles.find((role) => role.id === decisionOwnerRoleId);
     return owner ? owner.name : decisionOwnerRoleId;
   };
-  const startButton = state.sessionId
+  const startButton = state.sessionId && state.phase2Status === "idle" && state.completed
     ? \`<div class="mt-6 flex justify-end"><a href="/arena/\${state.sessionId}" class="rounded-full bg-[linear-gradient(135deg,var(--color-blue),var(--color-green))] px-5 py-3 text-sm font-semibold text-slate-950 transition hover:opacity-90">議論を開始</a></div>\`
     : "";
   resultPanel.innerHTML = \`
@@ -627,6 +640,7 @@ const renderResult = (result) => {
 };
 
 const updateInputMode = () => {
+  const canReviseInPlace = state.completed && state.phase2Status === "idle";
   const setInputAvailability = (isDisabled, hintText) => {
     messageInput.disabled = isDisabled;
     messageSubmit.disabled = isDisabled;
@@ -639,13 +653,26 @@ const updateInputMode = () => {
     messageStateHint.textContent = hintText;
   };
 
+  if (canReviseInPlace) {
+    messageInputLabel.textContent = "方向修正";
+    messageInput.placeholder = "例: 現場入力の運用より、先に経営判断の観点を優先したい";
+    messageSubmit.textContent = "方向修正を反映";
+    setInputAvailability(
+      state.awaitingResponse,
+      state.awaitingResponse
+        ? "要件定義役が方向修正を反映しています。応答が返るまで入力と送信はできません。"
+        : "入力可能です。方向修正を送ると、同じセッションで要件定義を更新します。",
+    );
+    return;
+  }
+
   if (state.completed) {
     messageInputLabel.textContent = "完了";
     messageInput.placeholder = "要件定義は完了しました。";
     messageSubmit.textContent = "完了";
     setInputAvailability(
       true,
-      "要件定義は完了済みです。内容を確認して次の議論フェーズに進んでください。",
+      "要件定義は完了済みです。内容を確認して次の画面に進んでください。",
     );
     return;
   }
@@ -713,6 +740,7 @@ const connectEvents = () => {
     }
     const payload = JSON.parse(event.data);
     state.completed = true;
+    state.phase2Status = "idle";
     state.awaitingResponse = false;
     renderResult(payload.result);
     updateInputMode();
@@ -743,10 +771,13 @@ messageForm.addEventListener("submit", async (event) => {
   }
 
   if (state.awaitingResponse || state.completed) {
-    return;
+    if (!(state.completed && state.phase2Status === "idle")) {
+      return;
+    }
   }
 
   const isNewSession = !state.sessionId;
+  const wasCompleted = state.completed;
   renderMessage("あなた", message, false);
   messageInput.value = "";
   state.awaitingResponse = true;
@@ -778,6 +809,8 @@ messageForm.addEventListener("submit", async (event) => {
     state.sessionId = payload.sessionId;
     sessionBadge.dataset.sessionId = payload.sessionId;
     sessionBadge.dataset.sessionStatus = "collecting_requirements";
+    sessionBadge.dataset.phase2Status = "idle";
+    state.phase2Status = "idle";
     sessionBadge.textContent = \`Session: \${payload.sessionId}\`;
     connectEvents();
     statusText.textContent =
@@ -786,8 +819,19 @@ messageForm.addEventListener("submit", async (event) => {
     return;
   }
 
-  statusText.textContent =
-    "要件定義役が回答内容を読み込み、要件と不足情報を整理しています。";
+  statusText.textContent = state.completed
+    ? "要件定義役が方向修正を反映し、要件と論点を再整理しています。"
+    : "要件定義役が回答内容を読み込み、要件と不足情報を整理しています。";
+
+  if (state.completed) {
+    state.completed = false;
+    sessionBadge.dataset.sessionStatus = "collecting_requirements";
+    const startLink = resultPanel.querySelector('a[href^="/arena/"]');
+    if (startLink?.parentElement) {
+      startLink.parentElement.remove();
+    }
+    connectEvents();
+  }
 
   const response = await fetch(\`/api/phase1/sessions/\${state.sessionId}/messages\`, {
     method: "POST",
@@ -797,6 +841,8 @@ messageForm.addEventListener("submit", async (event) => {
 
   if (!response.ok) {
     state.awaitingResponse = false;
+    state.completed = wasCompleted;
+    sessionBadge.dataset.sessionStatus = wasCompleted ? "completed" : "collecting_requirements";
     updateInputMode();
     statusText.textContent = "回答の送信に失敗しました。";
   }
@@ -808,7 +854,9 @@ if (state.sessionId && !state.completed) {
   statusText.textContent = "保存済みセッションを再開しました。";
 }
 if (state.completed) {
-  statusText.textContent = "整理済みの要件・論点・ロール定義を表示しています。";
+  statusText.textContent = state.phase2Status === "idle"
+    ? "整理済みの要件・論点・ロール定義を表示しています。必要なら方向修正を送れます。"
+    : "整理済みの要件・論点・ロール定義を表示しています。";
 }
 `;
 
@@ -925,6 +973,46 @@ export const registerPhase1Routes = (
         return c.json({ message: "session is processing. please wait." }, 409);
       }
       return c.json({ message: "failed to process reply." }, 500);
+    }
+  });
+
+  app.post("/api/sessions/:sessionId/fork", async (c) => {
+    const sessionId = c.req.param("sessionId");
+    const body = (await c.req.json()) as { message?: unknown };
+    const message = typeof body.message === "string" ? body.message.trim() : "";
+
+    if (!message) {
+      logger.error("Phase1 follow-up session rejected", {
+        sessionId,
+        reason: "message_missing",
+      });
+      return c.json({ message: "message is required." }, 400);
+    }
+
+    try {
+      const session = service.createSessionFromExistingChat(sessionId, message);
+      logger.info("Phase1 follow-up session response sent", {
+        sourceSessionId: sessionId,
+        newSessionId: session.id,
+      });
+      return c.json({ sessionId: session.id }, 201);
+    } catch (error) {
+      const messageText =
+        error instanceof Error ? error.message : "unexpected_error";
+      logger.error("Phase1 follow-up session failed", {
+        sessionId,
+        message: messageText,
+      });
+      if (messageText === "session_not_found") {
+        return c.json({ message: "session not found." }, 404);
+      }
+      if (messageText === "session_phase1_not_completed") {
+        return c.json(
+          { message: "only sessions with completed phase 1 can fork." },
+          409,
+        );
+      }
+      return c.json({ message: "failed to create follow-up session." }, 500);
     }
   });
 

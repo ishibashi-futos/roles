@@ -97,4 +97,87 @@ describe("Phase1Service", () => {
     expect(latest?.phase1.errorMessage).toBe("LLM request timed out.");
     expect(latest?.phase1.isProcessing).toBe(false);
   });
+
+  test("Phase1 完了後でも Phase2 開始前なら同じセッションで方向修正できる", async () => {
+    let callCount = 0;
+    const repository = new WorkflowSessionRepository(":memory:");
+    const agent: RequirementAgent = {
+      async decide(input) {
+        callCount += 1;
+        if (callCount === 1) {
+          return {
+            kind: "complete",
+            message: "最初の定義がまとまりました。",
+            result: completedResult,
+          };
+        }
+
+        expect(input.userReplyCount).toBe(1);
+        expect(input.messages.at(-1)?.content).toBe(
+          "経営指標の整理を優先したいです。",
+        );
+        return {
+          kind: "complete",
+          message: "方向修正を反映しました。",
+          result: completedResult,
+        };
+      },
+    };
+    const service = new Phase1Service(repository, agent);
+
+    const session = service.createSession("営業行動を整理したい");
+    await Bun.sleep(0);
+
+    service.submitReply(session.id, "経営指標の整理を優先したいです。");
+    await Bun.sleep(0);
+
+    const latest = service.getSession(session.id);
+    expect(latest?.phase1.status).toBe("completed");
+    expect(latest?.phase1.userReplyCount).toBe(1);
+    expect(latest?.phase2.status).toBe("idle");
+    expect(
+      latest?.phase1.messages.some(
+        (message) => message.content === "方向修正を反映しました。",
+      ),
+    ).toBe(true);
+  });
+
+  test("既存チャット履歴を引き継いだ新セッションを作成できる", async () => {
+    const repository = new WorkflowSessionRepository(":memory:");
+    const agent: RequirementAgent = {
+      async decide() {
+        return {
+          kind: "complete",
+          message: "定義がまとまりました。",
+          result: completedResult,
+        };
+      },
+    };
+    const service = new Phase1Service(repository, agent);
+
+    const session = service.createSession("営業行動を整理したい");
+    await Bun.sleep(0);
+
+    const nextSession = service.createSessionFromExistingChat(
+      session.id,
+      "現場運用より経営判断を優先したいです。",
+    );
+    await Bun.sleep(0);
+
+    const latest = service.getSession(nextSession.id);
+    expect(latest?.topic).toBe("営業行動を整理したい");
+    expect(
+      latest?.phase1.messages.some(
+        (message) => message.content === "定義がまとまりました。",
+      ),
+    ).toBe(true);
+    expect(
+      latest?.phase1.messages.some(
+        (message) =>
+          message.content === "現場運用より経営判断を優先したいです。",
+      ),
+    ).toBe(true);
+    expect(latest?.phase2.messages).toEqual([]);
+    expect(latest?.phase1.userReplyCount).toBe(1);
+  });
 });

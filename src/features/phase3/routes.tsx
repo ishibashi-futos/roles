@@ -85,6 +85,30 @@ const ReportPage = ({ sessionId }: { sessionId: string }) => (
           >
             再試行
           </button>
+
+          <section class="rounded-[28px] border border-white/80 bg-white/85 p-6 shadow-xl shadow-slate-950/5 backdrop-blur">
+            <p class="text-xs uppercase tracking-[0.28em] text-slate-400">
+              方向修正
+            </p>
+            <p class="mt-3 text-sm leading-6 text-slate-700">
+              ここで送った内容は新しいセッションに引き継ぎ、要件定義をやり直します。
+            </p>
+            <form id="fork-form" class="mt-4 space-y-3">
+              <textarea
+                id="fork-message"
+                rows={4}
+                class="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm leading-6 text-slate-900 outline-none transition focus:border-sky-400"
+                placeholder="例: 重視する論点や前提条件を変えたい"
+              />
+              <button
+                id="fork-submit"
+                type="submit"
+                class="w-full rounded-full bg-[linear-gradient(135deg,var(--color-blue),var(--color-green))] px-5 py-3 text-sm font-semibold text-slate-950"
+              >
+                新しいセッションで方向修正
+              </button>
+            </form>
+          </section>
         </aside>
 
         <section class="rounded-[32px] border border-white/80 bg-white/90 p-6 shadow-2xl shadow-slate-950/8 backdrop-blur">
@@ -121,6 +145,9 @@ const banner = document.getElementById("banner");
 const loading = document.getElementById("loading");
 const reportContent = document.getElementById("report-content");
 const retryButton = document.getElementById("retry-button");
+const forkForm = document.getElementById("fork-form");
+const forkMessage = document.getElementById("fork-message");
+const forkSubmit = document.getElementById("fork-submit");
 
 const completionReasonLabel = (reason) => {
   if (reason === "resolved") {
@@ -303,6 +330,34 @@ retryButton.addEventListener("click", async () => {
   if (!response.ok) {
     statusText.textContent = "再試行の開始に失敗しました。";
   }
+});
+
+forkForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const message = forkMessage.value.trim();
+  if (!message) {
+    statusText.textContent = "方向修正したい内容を入力してください。";
+    return;
+  }
+
+  forkSubmit.disabled = true;
+  statusText.textContent = "新しいセッションを作成しています。";
+
+  const response = await fetch(\`/api/sessions/\${state.sessionId}/fork\`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ message }),
+  });
+
+  forkSubmit.disabled = false;
+
+  if (!response.ok) {
+    statusText.textContent = "新しいセッションの作成に失敗しました。";
+    return;
+  }
+
+  const payload = await response.json();
+  window.location.href = \`/sessions/\${payload.sessionId}\`;
 });
 
 const boot = async () => {

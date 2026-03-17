@@ -34,6 +34,35 @@ export class Phase1Service {
     return session;
   }
 
+  createSessionFromExistingChat(sessionId: string, message: string) {
+    const session = this.getLatestSession(sessionId);
+
+    if (!session) {
+      throw new Error("session_not_found");
+    }
+
+    if (session.phase1.status !== "completed" || !session.phase1.result) {
+      throw new Error("session_phase1_not_completed");
+    }
+
+    const nextSession = this.store.createSessionFromPhase1Messages({
+      topic: session.topic,
+      messages: [
+        ...session.phase1.messages,
+        { role: "user", content: message },
+      ],
+      userReplyCount: 1,
+    });
+
+    logger.info("Phase1 follow-up session created", {
+      sourceSessionId: sessionId,
+      newSessionId: nextSession.id,
+      messageLength: message.length,
+    });
+    void this.process(nextSession.id);
+    return nextSession;
+  }
+
   submitReply(sessionId: string, message: string) {
     const session = this.getLatestSession(sessionId);
 
@@ -41,12 +70,22 @@ export class Phase1Service {
       throw new Error("session_not_found");
     }
 
-    if (session.phase1.status !== "collecting_requirements") {
+    if (
+      session.phase1.status !== "collecting_requirements" &&
+      !(
+        session.phase1.status === "completed" &&
+        session.phase2.status === "idle"
+      )
+    ) {
       throw new Error("session_not_collecting");
     }
 
     if (session.phase1.isProcessing) {
       throw new Error("session_processing");
+    }
+
+    if (session.phase1.status === "completed") {
+      this.store.reopenPhase1(sessionId, 0);
     }
 
     this.store.appendPhase1UserMessage(sessionId, message);

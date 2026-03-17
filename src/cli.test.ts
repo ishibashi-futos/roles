@@ -221,6 +221,56 @@ describe("cli", () => {
     expect(replyResult.stdout.join("\n")).toContain("営業行動の可視化");
   });
 
+  test("fork --wait で既存チャットを引き継いだ新セッションを作成できる", async () => {
+    const runtime = createTestRuntime();
+    const createResult = createIo();
+
+    await runCli(["start", "--topic", "営業行動を整理したい", "--wait"], {
+      io: createResult.io,
+      createRuntime: () => runtime,
+    });
+    const originalSessionId = runtime.repository.listSessions()[0]?.id;
+    expect(originalSessionId).toBeDefined();
+
+    await runCli(
+      [
+        "reply",
+        "--session",
+        originalSessionId as string,
+        "--message",
+        "営業本部向けで、CRM定着を成功条件にしたいです。",
+        "--wait",
+      ],
+      {
+        io: createIo().io,
+        createRuntime: () => runtime,
+      },
+    );
+
+    const forkResult = createIo();
+    const exitCode = await runCli(
+      [
+        "fork",
+        "--session",
+        originalSessionId as string,
+        "--message",
+        "経営判断を優先する方向に変えたいです。",
+        "--wait",
+      ],
+      {
+        io: forkResult.io,
+        createRuntime: () => runtime,
+      },
+    );
+
+    expect(exitCode).toBe(0);
+    expect(runtime.repository.listSessions()).toHaveLength(2);
+    expect(forkResult.stdout.join("\n")).toContain(
+      "新しいセッションを作成しました。",
+    );
+    expect(forkResult.stdout.join("\n")).toContain("要件定義が完了しました。");
+  });
+
   test("list と show で保存済みセッションを確認できる", async () => {
     const runtime = createTestRuntime();
     const session = runtime.repository.createSession("在庫最適化");

@@ -33,6 +33,7 @@ const CLI_USAGE = `Usage:
   roles serve
   roles cli start --topic "<topic>" [--wait]
   roles cli reply --session <sessionId> --message "<message>" [--wait]
+  roles cli fork --session <sessionId> --message "<message>" [--wait]
   roles cli list
   roles cli show --session <sessionId>
   roles cli start-discussion --session <sessionId> [--wait]
@@ -540,6 +541,66 @@ export const runCli = async (args: string[], options: RunCliOptions = {}) => {
             return 1;
           }
           printPhase1Outcome(runtimeIo, settled, initialMessageCount + 1);
+          return settled.phase1.status === "failed" ? 1 : 0;
+        });
+      }
+      case "fork": {
+        const parsed = parseArguments(
+          args.slice(1),
+          ["--session", "--message"],
+          true,
+        );
+        return await withRuntime(options, async (runtime, runtimeIo) => {
+          const sessionId = requireValue(parsed.values, "session", "--session");
+          const message = requireValue(parsed.values, "message", "--message");
+
+          let created: WorkflowSession;
+          try {
+            created = runtime.phase1Service.createSessionFromExistingChat(
+              sessionId,
+              message,
+            );
+          } catch (error) {
+            const messageText =
+              error instanceof Error ? error.message : "unexpected_error";
+            runtimeIo.stderr(formatErrorMessage(messageText));
+            return 1;
+          }
+
+          runtimeIo.stdout(`sessionId: ${created.id}`);
+          runtimeIo.stdout("新しいセッションを作成しました。");
+          if (!parsed.wait) {
+            return 0;
+          }
+
+          const waitTimeoutMs = getCliWaitTimeoutMs();
+          let settled: WorkflowSession;
+          try {
+            settled = await waitForPhase1(
+              runtime,
+              created.id,
+              created.phase1.messages.length,
+              waitTimeoutMs,
+            );
+          } catch (error) {
+            const messageText =
+              error instanceof Error ? error.message : "unexpected_error";
+            if (messageText === "phase1_wait_timeout") {
+              printPhase1WaitTimeout(
+                runtimeIo,
+                runtime.phase1Service.getSession(created.id),
+              );
+              return 1;
+            }
+            runtimeIo.stderr(formatErrorMessage(messageText));
+            return 1;
+          }
+
+          printPhase1Outcome(
+            runtimeIo,
+            settled,
+            created.phase1.messages.length,
+          );
           return settled.phase1.status === "failed" ? 1 : 0;
         });
       }

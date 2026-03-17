@@ -201,7 +201,9 @@ describe("phase3 routes", () => {
     const response = await app.request("/report/test-session");
 
     expect(response.status).toBe(200);
-    expect(await response.text()).toContain("Report");
+    const html = await response.text();
+    expect(html).toContain("Report");
+    expect(html).toContain("新しいセッションで方向修正");
   });
 
   test("Phase2 完了後に Phase3 が自動で開始される", async () => {

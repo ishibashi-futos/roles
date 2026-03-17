@@ -106,6 +106,30 @@ const ArenaPage = ({ sessionId }: { sessionId: string }) => (
           >
             レポートを見る
           </a>
+
+          <section class="rounded-[28px] border border-white/10 bg-white/5 p-6 backdrop-blur">
+            <p class="text-xs uppercase tracking-[0.28em] text-slate-400">
+              方向修正
+            </p>
+            <p class="mt-3 text-sm leading-6 text-slate-300">
+              ここで送った内容は新しいセッションに引き継ぎ、要件定義を最初からやり直します。
+            </p>
+            <form id="fork-form" class="mt-4 space-y-3">
+              <textarea
+                id="fork-message"
+                rows={4}
+                class="w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-sm leading-6 text-slate-100 outline-none transition focus:border-cyan-300"
+                placeholder="例: 現場運用より、まず経営判断に必要な論点へ方向転換したい"
+              />
+              <button
+                id="fork-submit"
+                type="submit"
+                class="w-full rounded-full bg-white px-5 py-3 text-sm font-semibold text-slate-950"
+              >
+                新しいセッションで方向修正
+              </button>
+            </form>
+          </section>
         </aside>
       </div>
     </div>
@@ -132,6 +156,9 @@ const judgeResult = document.getElementById("judge-result");
 const pointStatuses = document.getElementById("point-statuses");
 const retryButton = document.getElementById("retry-button");
 const reportLink = document.getElementById("report-link");
+const forkForm = document.getElementById("fork-form");
+const forkMessage = document.getElementById("fork-message");
+const forkSubmit = document.getElementById("fork-submit");
 
 const escapeHtml = (value) => String(value)
   .replaceAll("&", "&amp;")
@@ -433,6 +460,34 @@ retryButton.addEventListener("click", async () => {
   if (!response.ok) {
     statusText.textContent = "再試行の開始に失敗しました。";
   }
+});
+
+forkForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const message = forkMessage.value.trim();
+  if (!message) {
+    statusText.textContent = "方向修正したい内容を入力してください。";
+    return;
+  }
+
+  forkSubmit.disabled = true;
+  statusText.textContent = "新しいセッションを作成しています。";
+
+  const response = await fetch(\`/api/sessions/\${state.sessionId}/fork\`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ message }),
+  });
+
+  forkSubmit.disabled = false;
+
+  if (!response.ok) {
+    statusText.textContent = "新しいセッションの作成に失敗しました。";
+    return;
+  }
+
+  const payload = await response.json();
+  window.location.href = \`/sessions/\${payload.sessionId}\`;
 });
 
 const boot = async () => {

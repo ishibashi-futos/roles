@@ -376,6 +376,113 @@ describe("phase1 routes", () => {
     expect(html).toContain("対象ユーザーを教えてください。");
   });
 
+  test("Phase1 完了後でも同じセッションで方向修正を送信できる", async () => {
+    let callCount = 0;
+    const app = createPhase1App({
+      requirementAgent: {
+        async decide() {
+          callCount += 1;
+          return {
+            kind: "complete",
+            message:
+              callCount === 1
+                ? "最初の定義がまとまりました。"
+                : "方向修正を反映しました。",
+            result: completedResult,
+          };
+        },
+      },
+      repository: createTestRepository(),
+    });
+
+    const createResponse = await app.request("/api/phase1/sessions", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        topic: "営業行動をデータ化したい",
+      }),
+    });
+    const created = (await createResponse.json()) as { sessionId: string };
+    await Bun.sleep(0);
+
+    const replyResponse = await app.request(
+      `/api/phase1/sessions/${created.sessionId}/messages`,
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          message: "現場運用より経営判断を優先したいです。",
+        }),
+      },
+    );
+
+    expect(replyResponse.status).toBe(202);
+
+    const eventsResponse = await app.request(
+      `/api/phase1/sessions/${created.sessionId}/events`,
+    );
+    const text = await eventsResponse.text();
+    expect(text).toContain("方向修正を反映しました。");
+  });
+
+  test("Phase1 完了済みセッションから新しいセッションを作成できる", async () => {
+    const repository = createTestRepository();
+    const app = createPhase1App({
+      requirementAgent: {
+        async decide() {
+          return {
+            kind: "complete",
+            message: "定義がまとまりました。",
+            result: completedResult,
+          };
+        },
+      },
+      repository,
+    });
+
+    const createResponse = await app.request("/api/phase1/sessions", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        topic: "営業行動をデータ化したい",
+      }),
+    });
+    const created = (await createResponse.json()) as { sessionId: string };
+    await Bun.sleep(0);
+
+    const forkResponse = await app.request(
+      `/api/sessions/${created.sessionId}/fork`,
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          message: "方向性を経営判断寄りに変えたいです。",
+        }),
+      },
+    );
+
+    expect(forkResponse.status).toBe(201);
+    const payload = (await forkResponse.json()) as { sessionId: string };
+    expect(payload.sessionId).not.toBe(created.sessionId);
+    await Bun.sleep(0);
+
+    const forked = repository.getSession(payload.sessionId);
+    expect(
+      forked?.phase1.messages.some(
+        (message) => message.content === "方向性を経営判断寄りに変えたいです。",
+      ),
+    ).toBe(true);
+    expect(forked?.phase2.messages).toEqual([]);
+  });
+
   test("セッションを削除できる", async () => {
     const repository = createTestRepository();
     const app = createPhase1App({
