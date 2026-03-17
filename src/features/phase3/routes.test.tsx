@@ -21,11 +21,13 @@ const completedResult: Phase1Result = {
       id: "point-1",
       title: "取得対象データ",
       description: "何を営業活動データとして扱うか",
+      decisionOwnerRoleId: "role-1",
     },
     {
       id: "point-2",
       title: "定着方法",
       description: "入力負荷を抑えながら運用する方法",
+      decisionOwnerRoleId: "role-1",
     },
   ],
   roles: [
@@ -36,6 +38,22 @@ const completedResult: Phase1Result = {
       responsibilities: ["施策優先順位の判断"],
       concerns: ["売上への悪影響"],
       systemPromptSeed: "売上責任の観点で発言する",
+    },
+    {
+      id: "role-2",
+      name: "現場営業",
+      perspective: "入力実務",
+      responsibilities: ["日々の活動入力"],
+      concerns: ["入力負荷の増大"],
+      systemPromptSeed: "現場負荷の観点で発言する",
+    },
+    {
+      id: "role-3",
+      name: "情シス",
+      perspective: "運用保守",
+      responsibilities: ["システム連携の整備"],
+      concerns: ["保守コストの増大"],
+      systemPromptSeed: "システム運用の観点で発言する",
     },
   ],
 };

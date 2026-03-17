@@ -22,6 +22,7 @@ export type DiscussionPoint = {
   id: string;
   title: string;
   description: string;
+  decisionOwnerRoleId: string;
 };
 
 export type RoleDefinition = {

@@ -81,6 +81,10 @@ const renderResult = (
     );
   }
 
+  const getDecisionOwnerName = (decisionOwnerRoleId: string) =>
+    result.roles.find((role) => role.id === decisionOwnerRoleId)?.name ??
+    decisionOwnerRoleId;
+
   return (
     <section class="space-y-6">
       <article class="rounded-[28px] border border-white/10 bg-[linear-gradient(160deg,#081120_0%,#10213f_55%,#102c38_100%)] p-6 text-white shadow-2xl shadow-sky-950/20">
@@ -111,6 +115,9 @@ const renderResult = (
               <h3 class="font-semibold text-slate-900">{point.title}</h3>
               <p class="mt-2 text-sm leading-6 text-slate-600">
                 {point.description}
+              </p>
+              <p class="mt-3 text-xs font-semibold uppercase tracking-[0.24em] text-sky-700">
+                意思決定者: {getDecisionOwnerName(point.decisionOwnerRoleId)}
               </p>
             </section>
           ))}
@@ -567,6 +574,10 @@ const renderList = (title, items) => \`
 \`;
 
 const renderResult = (result) => {
+  const getDecisionOwnerName = (decisionOwnerRoleId) => {
+    const owner = result.roles.find((role) => role.id === decisionOwnerRoleId);
+    return owner ? owner.name : decisionOwnerRoleId;
+  };
   const startButton = state.sessionId
     ? \`<div class="mt-6 flex justify-end"><a href="/arena/\${state.sessionId}" class="rounded-full bg-[linear-gradient(135deg,var(--color-blue),var(--color-green))] px-5 py-3 text-sm font-semibold text-slate-950 transition hover:opacity-90">議論を開始</a></div>\`
     : "";
@@ -589,6 +600,7 @@ const renderResult = (result) => {
             <section class="rounded-2xl border border-sky-100 bg-[linear-gradient(180deg,#ffffff_0%,#eff6ff_100%)] p-4">
               <h3 class="font-semibold text-slate-900">\${escapeHtml(point.title)}</h3>
               <p class="mt-2 text-sm leading-6 text-slate-600">\${escapeHtml(point.description)}</p>
+              <p class="mt-3 text-xs font-semibold uppercase tracking-[0.24em] text-sky-700">意思決定者: \${escapeHtml(getDecisionOwnerName(point.decisionOwnerRoleId))}</p>
             </section>
           \`).join("")}
         </div>

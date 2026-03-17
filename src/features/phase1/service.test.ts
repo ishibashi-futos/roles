@@ -17,11 +17,13 @@ const completedResult = {
       id: "point-1",
       title: "取得対象データ",
       description: "何を営業活動データとして扱うか",
+      decisionOwnerRoleId: "role-1",
     },
     {
       id: "point-2",
       title: "定着方法",
       description: "入力負荷を抑えながら運用する方法",
+      decisionOwnerRoleId: "role-1",
     },
   ],
   roles: [

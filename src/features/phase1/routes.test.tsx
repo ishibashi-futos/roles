@@ -23,11 +23,13 @@ const completedResult = {
       id: "point-1",
       title: "取得対象データ",
       description: "何を営業活動データとして扱うか",
+      decisionOwnerRoleId: "role-1",
     },
     {
       id: "point-2",
       title: "定着方法",
       description: "入力負荷を抑えながら運用する方法",
+      decisionOwnerRoleId: "role-1",
     },
   ],
   roles: [
@@ -88,6 +90,27 @@ describe("parseRequirementAgentDecision", () => {
           result: {
             requirements: completedResult.requirements,
             discussionPoints: completedResult.discussionPoints,
+          },
+        }),
+      ),
+    ).toThrow("Requirement agent returned invalid complete payload.");
+  });
+
+  test("存在しない意思決定者を持つ discussion point は失敗する", () => {
+    expect(() =>
+      parseRequirementAgentDecision(
+        JSON.stringify({
+          kind: "complete",
+          message: "定義がまとまりました。",
+          result: {
+            ...completedResult,
+            discussionPoints: [
+              {
+                ...completedResult.discussionPoints[0],
+                decisionOwnerRoleId: "role-missing",
+              },
+              completedResult.discussionPoints[1],
+            ],
           },
         }),
       ),

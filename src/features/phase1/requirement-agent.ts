@@ -43,7 +43,8 @@ The JSON must match one of the following shapes.
       {
         "id": "point-1",
         "title": "Discussion point",
-        "description": "Description of the discussion point"
+        "description": "Description of the discussion point",
+        "decisionOwnerRoleId": "role-1"
       }
     ],
     "roles": [
@@ -76,6 +77,7 @@ Rules:
 - Do not exclude a role only because it is senior, strategic, or not a day-to-day operator
 - discussionPoints must contain at least 2 items
 - discussionPoints must represent decisions or tradeoffs that could change the final strategy, not generic workstreams
+- Each discussion point must identify exactly one decisionOwnerRoleId from the generated roles
 - roles must represent contrasting viewpoints that can disagree in the discussion, not a flat department checklist
 - systemPromptSeed must state the role's argumentative stance in one sentence
 - successCriteria, constraints, assumptions, responsibilities, and concerns must never be empty arrays`;
@@ -142,8 +144,9 @@ const REQUIREMENT_AGENT_RESPONSE_SCHEMA = {
               id: { type: "string", minLength: 1 },
               title: { type: "string", minLength: 1 },
               description: { type: "string", minLength: 1 },
+              decisionOwnerRoleId: { type: "string", minLength: 1 },
             },
-            required: ["id", "title", "description"],
+            required: ["id", "title", "description", "decisionOwnerRoleId"],
           },
         },
         roles: {
@@ -346,13 +349,16 @@ const validatePhase1Result = (value: unknown): string | null => {
         return false;
       }
       const candidate = point as Record<string, unknown>;
-      return typeof candidate.id === "string" &&
+      return (
+        typeof candidate.id === "string" &&
         candidate.id.length > 0 &&
         typeof candidate.title === "string" &&
         candidate.title.length > 0 &&
-        typeof candidate.description === "string"
-        ? candidate.description.length > 0
-        : false;
+        typeof candidate.description === "string" &&
+        candidate.description.length > 0 &&
+        typeof candidate.decisionOwnerRoleId === "string" &&
+        candidate.decisionOwnerRoleId.length > 0
+      );
     })
   ) {
     return "discussionPoints is incomplete";
@@ -382,6 +388,19 @@ const validatePhase1Result = (value: unknown): string | null => {
     })
   ) {
     return "roles is incomplete";
+  }
+
+  const roleIds = new Set(
+    roles.map((role) => (role as Record<string, unknown>).id as string),
+  );
+
+  if (
+    discussionPoints.some((point) => {
+      const candidate = point as Record<string, unknown>;
+      return !roleIds.has(candidate.decisionOwnerRoleId as string);
+    })
+  ) {
+    return "discussionPoints decision owner is invalid";
   }
 
   return null;

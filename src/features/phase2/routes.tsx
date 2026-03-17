@@ -161,9 +161,13 @@ const renderPointStatuses = () => {
   pointStatuses.innerHTML = state.session.phase2.pointStatuses.map((pointStatus) => {
     const point = discussionPoints.find((candidate) => candidate.id === pointStatus.discussionPointId);
     const title = point ? point.title : pointStatus.discussionPointId;
+    const decisionOwnerName = point
+      ? (state.session.phase1.result?.roles || []).find((role) => role.id === point.decisionOwnerRoleId)?.name || point.decisionOwnerRoleId
+      : "-";
     return \`
       <article class="rounded-2xl border border-white/10 bg-black/10 px-4 py-3">
         <p class="text-sm font-semibold text-slate-100">\${escapeHtml(title)}</p>
+        <p class="mt-1 text-xs text-slate-300">意思決定者: \${escapeHtml(decisionOwnerName)}</p>
         <p class="mt-1 text-xs uppercase tracking-[0.24em] text-slate-400">\${escapeHtml(pointStatus.status)}</p>
       </article>
     \`;
