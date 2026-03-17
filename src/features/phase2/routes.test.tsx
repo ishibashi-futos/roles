@@ -282,6 +282,44 @@ describe("phase2 routes", () => {
     expect(eventsText).toContain("phase2_completed");
   });
 
+  test("Phase2 state に現在セッションの実効ターン上限を含める", async () => {
+    const app = createTestApp({
+      repository: createTestRepository(),
+      requirementAgent: completeImmediatelyRequirementAgent,
+      facilitatorAgent: {
+        async decide() {
+          throw new Error("unexpected");
+        },
+      },
+      roleAgent: {
+        async speak() {
+          throw new Error("unexpected");
+        },
+      },
+      judgeAgent: {
+        async decide() {
+          throw new Error("unexpected");
+        },
+      },
+      maxTurnsPerPoint: 7,
+      maxTotalTurns: 19,
+    });
+    const sessionId = await createSession(app);
+
+    const response = await app.request(
+      `/api/sessions/${sessionId}/phase2/state`,
+    );
+    const session = (await response.json()) as {
+      phase2: {
+        effectiveMaxTurnsPerPoint: number;
+        effectiveMaxTotalTurns: number;
+      };
+    };
+
+    expect(session.phase2.effectiveMaxTurnsPerPoint).toBe(7);
+    expect(session.phase2.effectiveMaxTotalTurns).toBe(19);
+  });
+
   test("Phase1 未完了では開始できない", async () => {
     const app = createTestApp({
       repository: createTestRepository(),
@@ -518,6 +556,8 @@ describe("phase2 routes", () => {
         currentDiscussionPointIndex: number;
         currentTurnCount: number;
         totalTurnCount: number;
+        effectiveMaxTurnsPerPoint: number;
+        effectiveMaxTotalTurns: number;
         maxTurnsPerPointOverride: number | null;
         maxTotalTurnsOverride: number | null;
         pointStatuses: Array<{ status: string }>;
@@ -533,6 +573,8 @@ describe("phase2 routes", () => {
     expect(resumedBeforeStart.phase2.currentDiscussionPointIndex).toBe(0);
     expect(resumedBeforeStart.phase2.currentTurnCount).toBe(1);
     expect(resumedBeforeStart.phase2.totalTurnCount).toBe(1);
+    expect(resumedBeforeStart.phase2.effectiveMaxTurnsPerPoint).toBe(12);
+    expect(resumedBeforeStart.phase2.effectiveMaxTotalTurns).toBe(30);
     expect(resumedBeforeStart.phase2.maxTurnsPerPointOverride).toBe(12);
     expect(resumedBeforeStart.phase2.maxTotalTurnsOverride).toBe(30);
     expect(resumedBeforeStart.phase2.pointStatuses[0]?.status).toBe("pending");

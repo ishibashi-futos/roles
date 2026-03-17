@@ -11,6 +11,18 @@ type RegisterPhase2RoutesOptions = {
   service: Phase2Service;
 };
 
+const buildPhase2StateResponse = (
+  session: NonNullable<ReturnType<Phase2Service["getSession"]>>,
+  service: Phase2Service,
+) => ({
+  ...session,
+  phase2: {
+    ...session.phase2,
+    effectiveMaxTurnsPerPoint: service.getEffectiveMaxTurnsPerPoint(session),
+    effectiveMaxTotalTurns: service.getEffectiveMaxTotalTurns(session),
+  },
+});
+
 const ArenaPage = ({ sessionId }: { sessionId: string }) => (
   <main class="min-h-screen bg-[radial-gradient(circle_at_top_left,_rgba(59,130,246,0.26),_transparent_26%),radial-gradient(circle_at_top_right,_rgba(16,185,129,0.18),_transparent_28%),radial-gradient(circle_at_bottom,_rgba(139,92,246,0.18),_transparent_34%),linear-gradient(180deg,#081120_0%,#0b1730_55%,#081120_100%)] px-4 py-8">
     <div class="mx-auto max-w-7xl">
@@ -215,6 +227,8 @@ const completionReasonLabel = (reason) => {
   return "未確定";
 };
 
+const formatTurnCount = (current, max) => String(current) + " / " + String(max);
+
 const buildDiscussionCopyText = () => {
   if (!state.session) {
     return "";
@@ -254,10 +268,16 @@ const buildDiscussionCopyText = () => {
     discussionPoints[state.session.phase2.currentDiscussionPointIndex]?.title || "完了",
     "",
     "- 現在論点ターン数",
-    String(state.session.phase2.currentTurnCount),
+    formatTurnCount(
+      state.session.phase2.currentTurnCount,
+      state.session.phase2.effectiveMaxTurnsPerPoint,
+    ),
     "",
     "- 総ターン数",
-    String(state.session.phase2.totalTurnCount),
+    formatTurnCount(
+      state.session.phase2.totalTurnCount,
+      state.session.phase2.effectiveMaxTotalTurns,
+    ),
     "",
     "# Discussion Points",
     "",
@@ -341,8 +361,14 @@ const renderDashboard = () => {
   const discussionPoints = state.session.phase1.result?.discussionPoints || [];
   const current = discussionPoints[state.session.phase2.currentDiscussionPointIndex];
   currentPoint.textContent = current ? current.title : "完了";
-  currentTurnCount.textContent = String(state.session.phase2.currentTurnCount);
-  totalTurnCount.textContent = String(state.session.phase2.totalTurnCount);
+  currentTurnCount.textContent = formatTurnCount(
+    state.session.phase2.currentTurnCount,
+    state.session.phase2.effectiveMaxTurnsPerPoint,
+  );
+  totalTurnCount.textContent = formatTurnCount(
+    state.session.phase2.totalTurnCount,
+    state.session.phase2.effectiveMaxTotalTurns,
+  );
   judgeResult.textContent = state.session.phase2.lastJudgeDecision
     ? \`\${state.session.phase2.lastJudgeDecision.isResolved ? "resolved" : "pending"}\\n\${state.session.phase2.lastJudgeDecision.reason}\`
     : "まだ判定はありません。";
@@ -674,7 +700,7 @@ export const registerPhase2Routes = (
       return c.json({ message: "session not found." }, 404);
     }
 
-    return c.json(session);
+    return c.json(buildPhase2StateResponse(session, service));
   });
 
   app.post("/api/sessions/:sessionId/phase2/start", (c) => {

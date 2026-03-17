@@ -62,6 +62,14 @@ export class Phase2Service {
     return this.repository.getEventHistory(sessionId);
   }
 
+  getEffectiveMaxTurnsPerPoint(session: WorkflowSession) {
+    return this.getMaxTurnsPerPoint(session);
+  }
+
+  getEffectiveMaxTotalTurns(session: WorkflowSession) {
+    return this.getMaxTotalTurns(session);
+  }
+
   start(sessionId: string) {
     const session = this.requireRunnableSession(sessionId);
     if (session.phase2.status !== "idle") {
