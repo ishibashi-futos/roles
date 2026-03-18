@@ -1,9 +1,9 @@
+import { type CreateRuntimeOptions, createRuntime } from "./runtime";
 import type {
   ArenaMessage,
   JudgeDecisionRecord,
   WorkflowSession,
 } from "./shared/workflow-types";
-import { type CreateRuntimeOptions, createRuntime } from "./runtime";
 
 type CliIo = {
   stdout: (message: string) => void;

@@ -1,15 +1,15 @@
 import "../../test/silence-runtime";
 import { describe, expect, test } from "bun:test";
-import { createPhase1App } from "./routes";
+import { getOutputLanguageFromEnv } from "../../shared/output-language";
+import { WorkflowSessionRepository } from "../../shared/workflow-session-repository";
 import type { RequirementAgent } from "./requirement-agent";
-import type { SessionTitleAgent } from "./session-title-agent";
 import {
   buildRequirementAgentInstruction,
   buildRequirementAgentSystemPrompt,
   parseRequirementAgentDecision,
 } from "./requirement-agent";
-import { WorkflowSessionRepository } from "../../shared/workflow-session-repository";
-import { getOutputLanguageFromEnv } from "../../shared/output-language";
+import { createPhase1App } from "./routes";
+import type { SessionTitleAgent } from "./session-title-agent";
 
 const completedResult = {
   requirements: {

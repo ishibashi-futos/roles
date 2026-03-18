@@ -2,8 +2,8 @@ import "../../test/silence-runtime";
 import { describe, expect, test } from "bun:test";
 import { WorkflowSessionRepository } from "../../shared/workflow-session-repository";
 import type { RequirementAgent } from "./requirement-agent";
-import type { SessionTitleAgent } from "./session-title-agent";
 import { Phase1Service } from "./service";
+import type { SessionTitleAgent } from "./session-title-agent";
 
 const completedResult = {
   requirements: {

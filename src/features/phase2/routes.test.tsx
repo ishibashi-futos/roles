@@ -6,9 +6,9 @@ import type {
   FacilitatorDecision,
   Phase1Result,
 } from "../../shared/workflow-types";
-import type { FacilitatorAgent, JudgeAgent, RoleAgent } from "./agents";
 import type { RequirementAgent } from "../phase1/requirement-agent";
 import type { SessionTitleAgent } from "../phase1/session-title-agent";
+import type { FacilitatorAgent, JudgeAgent, RoleAgent } from "./agents";
 import {
   buildFacilitatorSystemPrompt,
   buildJudgeSystemPrompt,

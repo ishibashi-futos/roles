@@ -1,11 +1,11 @@
 import { logger } from "../../shared/logger";
-import { WorkflowSessionRepository } from "../../shared/workflow-session-repository";
+import type { WorkflowSessionRepository } from "../../shared/workflow-session-repository";
 import {
   getPhase2DiscussionPoints,
   type WorkflowSession,
 } from "../../shared/workflow-types";
-import { validateReportMarkdown } from "./report-markdown";
 import type { ReportAgent } from "./agent";
+import { validateReportMarkdown } from "./report-markdown";
 
 type Phase3ServiceOptions = {
   maxRetryCount?: number;

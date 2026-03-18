@@ -1,6 +1,5 @@
 import { logger } from "../../shared/logger";
-import { WorkflowSessionRepository } from "../../shared/workflow-session-repository";
-import { getPhase2DiscussionPoints } from "../../shared/workflow-types";
+import type { WorkflowSessionRepository } from "../../shared/workflow-session-repository";
 import type {
   FacilitatorDecision,
   Phase2CompletionReason,
@@ -8,6 +7,7 @@ import type {
   Phase2Step,
   WorkflowSession,
 } from "../../shared/workflow-types";
+import { getPhase2DiscussionPoints } from "../../shared/workflow-types";
 import type { FacilitatorAgent, JudgeAgent, RoleAgent } from "./agents";
 
 type Phase2ServiceOptions = {

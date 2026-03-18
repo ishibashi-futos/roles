@@ -1,6 +1,6 @@
-import { Hono } from "hono";
-import { streamSSE } from "hono/streaming";
+import type { Hono } from "hono";
 import { jsxRenderer } from "hono/jsx-renderer";
+import { streamSSE } from "hono/streaming";
 import { BrandMark, PageShell } from "../../shared/branding";
 import { logger } from "../../shared/logger";
 import type { WorkflowSessionRepository } from "../../shared/workflow-session-repository";

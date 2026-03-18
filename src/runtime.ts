@@ -1,4 +1,13 @@
 import {
+  createRequirementAgentFromEnv,
+  type RequirementAgent,
+} from "./features/phase1/requirement-agent";
+import { Phase1Service } from "./features/phase1/service";
+import {
+  createSessionTitleAgentFromEnv,
+  type SessionTitleAgent,
+} from "./features/phase1/session-title-agent";
+import {
   createFallbackPhase2Agents,
   createPhase2AgentsFromEnv,
   type FacilitatorAgent,
@@ -6,15 +15,6 @@ import {
   type RoleAgent,
 } from "./features/phase2/agents";
 import { Phase2Service } from "./features/phase2/service";
-import {
-  createRequirementAgentFromEnv,
-  type RequirementAgent,
-} from "./features/phase1/requirement-agent";
-import {
-  createSessionTitleAgentFromEnv,
-  type SessionTitleAgent,
-} from "./features/phase1/session-title-agent";
-import { Phase1Service } from "./features/phase1/service";
 import {
   createFallbackPhase3Agent,
   createPhase3AgentFromEnv,

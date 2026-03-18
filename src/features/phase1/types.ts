@@ -8,9 +8,8 @@ export type {
   RequirementMessage,
   RequirementMessageRole,
   RoleDefinition,
+  WorkflowSession as RequirementSession,
 } from "../../shared/workflow-types";
-
-export type { WorkflowSession as RequirementSession } from "../../shared/workflow-types";
 
 export type RequirementAgentAskDecision = {
   kind: "ask";

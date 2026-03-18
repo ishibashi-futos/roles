@@ -1,7 +1,7 @@
 import { Hono } from "hono";
-import { streamSSE } from "hono/streaming";
 import type { Child } from "hono/jsx";
 import { jsxRenderer } from "hono/jsx-renderer";
+import { streamSSE } from "hono/streaming";
 import { BrandMark, PageShell } from "../../shared/branding";
 import { registerDevReloadRoutes } from "../../shared/dev-reload";
 import { logger } from "../../shared/logger";
@@ -10,11 +10,11 @@ import { WorkflowSessionRepository } from "../../shared/workflow-session-reposit
 import type { WorkflowSession } from "../../shared/workflow-types";
 import type { RequirementAgent } from "./requirement-agent";
 import { createRequirementAgentFromEnv } from "./requirement-agent";
+import { Phase1Service } from "./service";
 import {
   createSessionTitleAgentFromEnv,
   type SessionTitleAgent,
 } from "./session-title-agent";
-import { Phase1Service } from "./service";
 import type { Phase1Result, RequirementMessage } from "./types";
 
 type CreatePhase1AppOptions = {

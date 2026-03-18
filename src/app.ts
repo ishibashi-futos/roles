@@ -1,7 +1,7 @@
 import { Hono } from "hono";
+import { registerPhase1Routes } from "./features/phase1/routes";
 import { registerPhase2Routes } from "./features/phase2/routes";
 import { registerPhase3Routes } from "./features/phase3/routes";
-import { registerPhase1Routes } from "./features/phase1/routes";
 import type { CreateRuntimeOptions } from "./runtime";
 import { createRuntime } from "./runtime";
 import { registerDevReloadRoutes } from "./shared/dev-reload";

@@ -1,6 +1,6 @@
-import { logger } from "../../shared/logger";
-import { WorkflowSessionRepository } from "../../shared/workflow-session-repository";
 import { getLlmTimeoutMsFromEnv } from "../../shared/llm/openai-compatible-client";
+import { logger } from "../../shared/logger";
+import type { WorkflowSessionRepository } from "../../shared/workflow-session-repository";
 import type { WorkflowSession } from "../../shared/workflow-types";
 import type { RequirementAgent } from "./requirement-agent";
 import type { SessionTitleAgent } from "./session-title-agent";
