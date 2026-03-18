@@ -156,7 +156,7 @@ const printPhase1Outcome = (
 
   if (session.phase1.status === "completed" && session.phase1.result) {
     io.stdout(
-      `要件定義が完了しました。論点: ${session.phase1.result.discussionPoints.length}件 / ロール: ${session.phase1.result.roles.length}件`,
+      `要件定義が完了しました。論点: ${session.phase1.result.discussionPoints.length}件 / 未解決: ${session.phase1.result.openQuestions.length}件 / ロール: ${session.phase1.result.roles.length}件`,
     );
     io.stdout(`テーマ: ${session.phase1.result.requirements.theme}`);
   }
@@ -258,6 +258,9 @@ const printSessionDetail = (io: CliIo, session: WorkflowSession) => {
   if (session.phase1.result) {
     lines.push(
       `  discussionPoints: ${session.phase1.result.discussionPoints.length}`,
+    );
+    lines.push(
+      `  openQuestions: ${session.phase1.result.openQuestions.length}`,
     );
     lines.push(`  roles: ${session.phase1.result.roles.length}`);
   }

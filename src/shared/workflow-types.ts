@@ -25,6 +25,14 @@ export type DiscussionPoint = {
   decisionOwnerRoleId: string;
 };
 
+export type OpenQuestion = {
+  id: string;
+  title: string;
+  description: string;
+  whyItMatters: string;
+  suggestedOwnerRoleId: string;
+};
+
 export type RoleDefinition = {
   id: string;
   name: string;
@@ -37,7 +45,31 @@ export type RoleDefinition = {
 export type Phase1Result = {
   requirements: RequirementDefinition;
   discussionPoints: DiscussionPoint[];
+  openQuestions: OpenQuestion[];
   roles: RoleDefinition[];
+};
+
+export const getPhase2DiscussionPoints = (
+  result: Pick<Phase1Result, "discussionPoints" | "openQuestions">,
+): DiscussionPoint[] => {
+  const existingTitles = new Set(
+    result.discussionPoints.map((point) => point.title.trim().toLowerCase()),
+  );
+  const derivedPoints = result.openQuestions
+    .filter(
+      (question) => !existingTitles.has(question.title.trim().toLowerCase()),
+    )
+    .map(
+      (question) =>
+        ({
+          id: `open-question-${question.id}`,
+          title: question.title,
+          description: `${question.description} なぜ重要か: ${question.whyItMatters}`,
+          decisionOwnerRoleId: question.suggestedOwnerRoleId,
+        }) satisfies DiscussionPoint,
+    );
+
+  return [...result.discussionPoints, ...derivedPoints];
 };
 
 export type Phase1State = {

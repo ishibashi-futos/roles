@@ -17,6 +17,7 @@ import type {
 import {
   createInitialPhase2State,
   createInitialPhase3State,
+  getPhase2DiscussionPoints,
 } from "./workflow-types";
 
 type SessionRow = {
@@ -750,7 +751,9 @@ export class WorkflowSessionRepository {
   }
 
   private initializePhase2(session: WorkflowSession) {
-    const discussionPoints = session.phase1.result?.discussionPoints ?? [];
+    const discussionPoints = session.phase1.result
+      ? getPhase2DiscussionPoints(session.phase1.result)
+      : [];
     session.phase2.pointStatuses = discussionPoints.map((point) => ({
       discussionPointId: point.id,
       status: "pending",

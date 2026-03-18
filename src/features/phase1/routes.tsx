@@ -157,6 +157,31 @@ const renderResult = (
           ? renderDiscussionStartButton(sessionId)
           : null}
       </article>
+
+      {result.openQuestions.length > 0 ? (
+        <article class="rounded-[28px] border border-amber-100 bg-white/90 p-6 shadow-xl shadow-amber-950/5 backdrop-blur">
+          <p class="text-xs font-semibold uppercase tracking-[0.3em] text-amber-700">
+            Open Questions
+          </p>
+          <div class="mt-4 grid gap-4">
+            {result.openQuestions.map((question) => (
+              <section class="rounded-2xl border border-amber-100 bg-[linear-gradient(180deg,#fffdf5_0%,#fffbeb_100%)] p-4">
+                <h3 class="font-semibold text-slate-900">{question.title}</h3>
+                <p class="mt-2 text-sm leading-6 text-slate-600">
+                  {question.description}
+                </p>
+                <p class="mt-3 text-sm leading-6 text-slate-600">
+                  なぜ重要か: {question.whyItMatters}
+                </p>
+                <p class="mt-3 text-xs font-semibold uppercase tracking-[0.24em] text-amber-700">
+                  想定オーナー:{" "}
+                  {getDecisionOwnerName(question.suggestedOwnerRoleId)}
+                </p>
+              </section>
+            ))}
+          </div>
+        </article>
+      ) : null}
     </section>
   );
 };
@@ -648,6 +673,21 @@ const renderResult = (result) => {
         </div>
         \${startButton}
       </article>
+      \${result.openQuestions.length > 0 ? \`
+        <article class="rounded-[28px] border border-amber-100 bg-white/90 p-6 shadow-xl shadow-amber-950/5 backdrop-blur">
+          <p class="text-xs font-semibold uppercase tracking-[0.3em] text-amber-700">Open Questions</p>
+          <div class="mt-4 grid gap-4">
+            \${result.openQuestions.map((question) => \`
+              <section class="rounded-2xl border border-amber-100 bg-[linear-gradient(180deg,#fffdf5_0%,#fffbeb_100%)] p-4">
+                <h3 class="font-semibold text-slate-900">\${escapeHtml(question.title)}</h3>
+                <p class="mt-2 text-sm leading-6 text-slate-600">\${escapeHtml(question.description)}</p>
+                <p class="mt-3 text-sm leading-6 text-slate-600">なぜ重要か: \${escapeHtml(question.whyItMatters)}</p>
+                <p class="mt-3 text-xs font-semibold uppercase tracking-[0.24em] text-amber-700">想定オーナー: \${escapeHtml(getDecisionOwnerName(question.suggestedOwnerRoleId))}</p>
+              </section>
+            \`).join("")}
+          </div>
+        </article>
+      \` : ""}
     </section>
   \`;
 };

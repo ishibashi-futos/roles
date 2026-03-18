@@ -33,6 +33,15 @@ const completedResult = {
       decisionOwnerRoleId: "role-1",
     },
   ],
+  openQuestions: [
+    {
+      id: "open-question-1",
+      title: "現場マネージャー評価をどう設計するか",
+      description: "ミドルマネージャーの抵抗をどう扱うかが未確定",
+      whyItMatters: "定着施策と評価設計によって導入戦略が変わるため",
+      suggestedOwnerRoleId: "role-1",
+    },
+  ],
   roles: [
     {
       id: "role-1",
@@ -158,7 +167,13 @@ describe("output language", () => {
       "When you ask, ask exactly one major question about one missing issue only",
     );
     expect(prompt).toContain(
-      'If some minor detail is missing, convert it into an explicit assumption and continue with kind="complete"',
+      'If some detail is missing but the discussion can still start, convert it into an explicit assumption or an open question and continue with kind="complete"',
+    );
+    expect(prompt).toContain(
+      "The ask message must contain one open question first, then 2-3 example options",
+    );
+    expect(prompt).toContain(
+      "The complete message must explain in one short paragraph why the current information is sufficient",
     );
   });
 
@@ -167,10 +182,13 @@ describe("output language", () => {
       'always return kind="complete"',
     );
     expect(buildRequirementAgentInstruction(true)).toContain(
-      "converted into explicit assumptions",
+      "recorded in openQuestions",
     );
     expect(buildRequirementAgentInstruction(false)).toContain(
       'Return kind="ask" only',
+    );
+    expect(buildRequirementAgentInstruction(false)).toContain(
+      "include 2-3 example options",
     );
   });
 });

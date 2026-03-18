@@ -27,6 +27,15 @@ const completedResult = {
       decisionOwnerRoleId: "role-1",
     },
   ],
+  openQuestions: [
+    {
+      id: "open-question-1",
+      title: "現場マネージャー評価をどう設計するか",
+      description: "ミドルマネージャーの抵抗をどう扱うかが未確定",
+      whyItMatters: "定着施策と評価設計によって導入戦略が変わるため",
+      suggestedOwnerRoleId: "role-1",
+    },
+  ],
   roles: [
     {
       id: "role-1",

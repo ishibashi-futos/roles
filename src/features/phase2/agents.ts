@@ -92,6 +92,7 @@ export interface FacilitatorAgent {
   decide(input: {
     topic: string;
     requirements: Phase1Result["requirements"];
+    openQuestions: Phase1Result["openQuestions"];
     currentDiscussionPoint: DiscussionPoint;
     roles: RoleDefinition[];
     messages: ArenaMessage[];
@@ -102,6 +103,7 @@ export interface RoleAgent {
   speak(input: {
     topic: string;
     requirements: Phase1Result["requirements"];
+    openQuestions: Phase1Result["openQuestions"];
     currentDiscussionPoint: DiscussionPoint;
     role: RoleDefinition;
     facilitatorMessage: string;
@@ -113,6 +115,7 @@ export interface JudgeAgent {
   decide(input: {
     topic: string;
     requirements: Phase1Result["requirements"];
+    openQuestions: Phase1Result["openQuestions"];
     currentDiscussionPoint: DiscussionPoint;
     roles: RoleDefinition[];
     messages: ArenaMessage[];
@@ -125,6 +128,7 @@ export class OpenAiFacilitatorAgent implements FacilitatorAgent {
   async decide(input: {
     topic: string;
     requirements: Phase1Result["requirements"];
+    openQuestions: Phase1Result["openQuestions"];
     currentDiscussionPoint: DiscussionPoint;
     roles: RoleDefinition[];
     messages: ArenaMessage[];
@@ -160,6 +164,7 @@ export class OpenAiRoleAgent implements RoleAgent {
   async speak(input: {
     topic: string;
     requirements: Phase1Result["requirements"];
+    openQuestions: Phase1Result["openQuestions"];
     currentDiscussionPoint: DiscussionPoint;
     role: RoleDefinition;
     facilitatorMessage: string;
@@ -192,6 +197,7 @@ export class OpenAiJudgeAgent implements JudgeAgent {
   async decide(input: {
     topic: string;
     requirements: Phase1Result["requirements"];
+    openQuestions: Phase1Result["openQuestions"];
     currentDiscussionPoint: DiscussionPoint;
     roles: RoleDefinition[];
     messages: ArenaMessage[];

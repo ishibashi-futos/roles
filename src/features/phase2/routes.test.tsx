@@ -39,6 +39,15 @@ const completedResult: Phase1Result = {
       decisionOwnerRoleId: "role-1",
     },
   ],
+  openQuestions: [
+    {
+      id: "open-question-1",
+      title: "現場マネージャー評価をどう設計するか",
+      description: "ミドルマネージャーの抵抗をどう扱うかが未確定",
+      whyItMatters: "定着施策と評価設計によって導入戦略が変わるため",
+      suggestedOwnerRoleId: "role-1",
+    },
+  ],
   roles: [
     {
       id: "role-1",
@@ -283,7 +292,7 @@ describe("phase2 routes", () => {
 
     expect(session.phase2.status).toBe("completed");
     expect(session.phase2.completionReason).toBe("resolved");
-    expect(session.phase2.messages.length).toBe(4);
+    expect(session.phase2.messages.length).toBe(6);
 
     const eventsResponse = await app.request(
       `/api/sessions/${sessionId}/phase2/events`,
@@ -484,7 +493,7 @@ describe("phase2 routes", () => {
     };
 
     expect(retriedSession.phase2.status).toBe("completed");
-    expect(retriedSession.phase2.messages.length).toBe(4);
+    expect(retriedSession.phase2.messages.length).toBe(6);
     expect(
       retriedSession.phase2.messages.filter(
         (message) => message.discussionPointId === "point-1",
@@ -620,9 +629,9 @@ describe("phase2 routes", () => {
     expect(resumedBeforeStart.phase2.currentTurnCount).toBe(1);
     expect(resumedBeforeStart.phase2.totalTurnCount).toBe(1);
     expect(resumedBeforeStart.phase2.effectiveMaxTurnsPerPoint).toBe(36);
-    expect(resumedBeforeStart.phase2.effectiveMaxTotalTurns).toBe(60);
+    expect(resumedBeforeStart.phase2.effectiveMaxTotalTurns).toBe(90);
     expect(resumedBeforeStart.phase2.maxTurnsPerPointOverride).toBe(36);
-    expect(resumedBeforeStart.phase2.maxTotalTurnsOverride).toBe(60);
+    expect(resumedBeforeStart.phase2.maxTotalTurnsOverride).toBe(90);
     expect(resumedBeforeStart.phase2.pointStatuses[0]?.status).toBe("pending");
     expect(resumedBeforeStart.phase2.messages).toHaveLength(2);
     expect(resumedBeforeStart.phase3.reportMarkdown).toBeNull();
@@ -778,6 +787,10 @@ describe("phase2 routes", () => {
     expect(resumedSession.phase2.pointStatuses).toEqual([
       { discussionPointId: "point-1", status: "resolved" },
       { discussionPointId: "point-2", status: "pending" },
+      {
+        discussionPointId: "open-question-open-question-1",
+        status: "pending",
+      },
     ]);
   });
 });

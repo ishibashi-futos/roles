@@ -20,7 +20,7 @@ export class Phase1Service {
     private readonly sessionTitleAgent: SessionTitleAgent,
     options: Phase1ServiceOptions = {},
   ) {
-    this.maxUserReplyCount = options.maxUserReplyCount ?? 3;
+    this.maxUserReplyCount = options.maxUserReplyCount ?? 4;
     this.staleProcessingTimeoutMs =
       options.staleProcessingTimeoutMs ??
       Math.max(getLlmTimeoutMsFromEnv() * 2, 120_000);

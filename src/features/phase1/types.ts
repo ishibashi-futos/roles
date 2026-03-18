@@ -1,5 +1,6 @@
 export type {
   DiscussionPoint,
+  OpenQuestion,
   Phase1Result,
   Phase1SessionStatus,
   Phase1SseEvent,

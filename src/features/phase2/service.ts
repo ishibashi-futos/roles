@@ -1,5 +1,6 @@
 import { logger } from "../../shared/logger";
 import { WorkflowSessionRepository } from "../../shared/workflow-session-repository";
+import { getPhase2DiscussionPoints } from "../../shared/workflow-types";
 import type {
   ArenaMessage,
   FacilitatorDecision,
@@ -120,7 +121,7 @@ export class Phase2Service {
       maxTurnsPerPointOverride: RESUME_MAX_TURNS_PER_POINT,
       maxTotalTurnsOverride:
         RESUME_MAX_TOTAL_TURNS_PER_DISCUSSION_POINT *
-        session.phase1.result.discussionPoints.length,
+        getPhase2DiscussionPoints(session.phase1.result).length,
     });
   }
 
@@ -132,10 +133,10 @@ export class Phase2Service {
         if (!result) {
           throw new Error("session_phase1_not_completed");
         }
+        const discussionPoints = getPhase2DiscussionPoints(result);
 
         if (
-          session.phase2.currentDiscussionPointIndex >=
-          result.discussionPoints.length
+          session.phase2.currentDiscussionPointIndex >= discussionPoints.length
         ) {
           await this.completePhase2(sessionId, "resolved");
           return;
@@ -147,7 +148,7 @@ export class Phase2Service {
         }
 
         const currentPoint =
-          result.discussionPoints[session.phase2.currentDiscussionPointIndex];
+          discussionPoints[session.phase2.currentDiscussionPointIndex];
         if (!currentPoint) {
           await this.completePhase2(sessionId, "resolved");
           return;
@@ -173,6 +174,7 @@ export class Phase2Service {
             const decision = await this.facilitatorAgent.decide({
               topic: session.topic,
               requirements: result.requirements,
+              openQuestions: result.openQuestions,
               currentDiscussionPoint: currentPoint,
               roles: result.roles,
               messages: session.phase2.messages,
@@ -207,6 +209,7 @@ export class Phase2Service {
             return this.roleAgent.speak({
               topic: session.topic,
               requirements: result.requirements,
+              openQuestions: result.openQuestions,
               currentDiscussionPoint: currentPoint,
               role,
               facilitatorMessage: facilitatorDecision.message,
@@ -237,6 +240,7 @@ export class Phase2Service {
             this.judgeAgent.decide({
               topic: session.topic,
               requirements: result.requirements,
+              openQuestions: result.openQuestions,
               currentDiscussionPoint: currentPoint,
               roles: result.roles,
               messages:

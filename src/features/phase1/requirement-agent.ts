@@ -16,7 +16,7 @@ const MAX_ROLE_COUNT = 5;
 export const buildRequirementAgentSystemPrompt = (
   outputLanguage: OutputLanguage,
 ) => `You are the requirement-definition agent for roles.
-Your job is to transform an ambiguous user topic into a discussion-ready definition with explicit requirements, discussion points, and role definitions.
+Your job is to transform an ambiguous user topic into a discussion-ready definition with explicit requirements, decision-grade discussion points, unresolved open questions, and role definitions.
 
 You must return a JSON object only.
 The JSON must match one of the following shapes.
@@ -24,13 +24,13 @@ The JSON must match one of the following shapes.
 1. When more information is required
 {
   "kind": "ask",
-  "message": "Question for the user"
+  "message": "One open question for the user, followed by 2-3 example options and an invitation to answer freely"
 }
 
 2. When the requirements and role definitions are ready
 {
   "kind": "complete",
-  "message": "Short summary of the finalized definition",
+  "message": "Short rationale explaining why the definition is sufficient, what was assumed, and what remains open",
   "result": {
     "requirements": {
       "theme": "Topic",
@@ -45,6 +45,15 @@ The JSON must match one of the following shapes.
         "title": "Discussion point",
         "description": "Description of the discussion point",
         "decisionOwnerRoleId": "role-1"
+      }
+    ],
+    "openQuestions": [
+      {
+        "id": "open-question-1",
+        "title": "Open question",
+        "description": "What is still unclear",
+        "whyItMatters": "Why this could change the final decision",
+        "suggestedOwnerRoleId": "role-1"
       }
     ],
     "roles": [
@@ -62,14 +71,16 @@ The JSON must match one of the following shapes.
 
 Rules:
 - Interact with the user in ${describeOutputLanguage(outputLanguage)}
-- Follow this reasoning order internally: identify the business workflow, extract the objective, extract constraints, determine the essential stakeholders, draft 2-4 decision-grade discussion points, then decide whether any remaining gap is truly blocking
-- You may return kind="complete" once the topic, objective, major constraints, and candidate stakeholders are sufficiently clear to start the discussion
-- Return kind="ask" only when the missing information prevents you from producing at least 2 decision-grade discussion points or at least 3 meaningful conflicting roles
-- Never ask for nice-to-have details
+- Follow this reasoning order internally: identify the business workflow, extract the objective, extract success criteria, extract constraints, determine the essential stakeholders, identify the major trade-offs, draft 2-4 decision-grade discussion points, capture unresolved but important open questions, then decide whether any remaining gap is truly blocking
+- Use a balanced intake policy: ask only about uncertainty that could materially lower discussion quality, but do not stop at the first plausible structure if key decision context is still unclear
+- Prefer kind="complete" only when the objective, major constraints, main stakeholders, and major trade-offs are sufficiently clear to begin a strong discussion
+- Return kind="ask" only when one unresolved issue still materially blocks decision quality or prevents you from producing at least 2 decision-grade discussion points or at least 3 meaningful conflicting roles
+- Never ask for nice-to-have details or cosmetic preferences
 - When you ask, ask exactly one major question about one missing issue only
 - Do not combine multiple missing issues into one question
 - Do not repeat the same question in different wording
-- If some minor detail is missing, convert it into an explicit assumption and continue with kind="complete"
+- The ask message must contain one open question first, then 2-3 example options, then a short sentence that free-form answers are welcome
+- If some detail is missing but the discussion can still start, convert it into an explicit assumption or an open question and continue with kind="complete"
 - roles must contain between 3 and ${MAX_ROLE_COUNT} items
 - Choose roles to maximize decision quality for the topic, not just operational coverage
 - Include executive or sponsor roles such as CxO, business owner, or department head when they are relevant to the topic
@@ -78,16 +89,20 @@ Rules:
 - discussionPoints must contain at least 2 items
 - discussionPoints must represent decisions or tradeoffs that could change the final strategy, not generic workstreams
 - Each discussion point must identify exactly one decisionOwnerRoleId from the generated roles
+- openQuestions must contain only unresolved issues that could still change the strategy, decision, or prioritization
+- openQuestions may be empty, but the field must always exist
+- Each open question must identify exactly one suggestedOwnerRoleId from the generated roles
 - roles must represent contrasting viewpoints that can disagree in the discussion, not a flat department checklist
 - systemPromptSeed must state the role's argumentative stance in one sentence
-- successCriteria, constraints, assumptions, responsibilities, and concerns must never be empty arrays`;
+- successCriteria, constraints, assumptions, responsibilities, and concerns must never be empty arrays
+- The complete message must explain in one short paragraph why the current information is sufficient, which assumptions were made, and which open questions remain`;
 
 export const buildRequirementAgentInstruction = (
   shouldForceComplete: boolean,
 ) =>
   shouldForceComplete
-    ? 'This is the final confirmation. Do not ask follow-up questions and always return kind="complete". Missing minor details must be converted into explicit assumptions.'
-    : 'Return kind="ask" only if one blocking gap prevents a discussion-ready definition. Ask about one issue only.';
+    ? 'This is the final confirmation. Do not ask follow-up questions and always return kind="complete". Any remaining important uncertainty must be recorded in openQuestions. Missing minor details must be converted into explicit assumptions.'
+    : 'Return kind="ask" only if one blocking gap still prevents a discussion-ready definition. Ask about one issue only and include 2-3 example options in the message.';
 
 const REQUIREMENT_AGENT_RESPONSE_SCHEMA = {
   type: "object",
@@ -149,6 +164,27 @@ const REQUIREMENT_AGENT_RESPONSE_SCHEMA = {
             required: ["id", "title", "description", "decisionOwnerRoleId"],
           },
         },
+        openQuestions: {
+          type: "array",
+          items: {
+            type: "object",
+            additionalProperties: false,
+            properties: {
+              id: { type: "string", minLength: 1 },
+              title: { type: "string", minLength: 1 },
+              description: { type: "string", minLength: 1 },
+              whyItMatters: { type: "string", minLength: 1 },
+              suggestedOwnerRoleId: { type: "string", minLength: 1 },
+            },
+            required: [
+              "id",
+              "title",
+              "description",
+              "whyItMatters",
+              "suggestedOwnerRoleId",
+            ],
+          },
+        },
         roles: {
           type: "array",
           minItems: 3,
@@ -183,7 +219,7 @@ const REQUIREMENT_AGENT_RESPONSE_SCHEMA = {
           },
         },
       },
-      required: ["requirements", "discussionPoints", "roles"],
+      required: ["requirements", "discussionPoints", "openQuestions", "roles"],
     },
   },
   required: ["kind", "message"],
@@ -326,6 +362,7 @@ const validatePhase1Result = (value: unknown): string | null => {
     | Record<string, unknown>
     | undefined;
   const discussionPoints = result.discussionPoints;
+  const openQuestions = result.openQuestions;
   const roles = result.roles;
 
   if (
@@ -362,6 +399,30 @@ const validatePhase1Result = (value: unknown): string | null => {
     })
   ) {
     return "discussionPoints is incomplete";
+  }
+
+  if (
+    !Array.isArray(openQuestions) ||
+    !openQuestions.every((question) => {
+      if (!question || typeof question !== "object") {
+        return false;
+      }
+      const candidate = question as Record<string, unknown>;
+      return (
+        typeof candidate.id === "string" &&
+        candidate.id.length > 0 &&
+        typeof candidate.title === "string" &&
+        candidate.title.length > 0 &&
+        typeof candidate.description === "string" &&
+        candidate.description.length > 0 &&
+        typeof candidate.whyItMatters === "string" &&
+        candidate.whyItMatters.length > 0 &&
+        typeof candidate.suggestedOwnerRoleId === "string" &&
+        candidate.suggestedOwnerRoleId.length > 0
+      );
+    })
+  ) {
+    return "openQuestions is incomplete";
   }
 
   if (
@@ -403,6 +464,15 @@ const validatePhase1Result = (value: unknown): string | null => {
     return "discussionPoints decision owner is invalid";
   }
 
+  if (
+    openQuestions.some((question) => {
+      const candidate = question as Record<string, unknown>;
+      return !roleIds.has(candidate.suggestedOwnerRoleId as string);
+    })
+  ) {
+    return "openQuestions owner is invalid";
+  }
+
   return null;
 };
 
@@ -426,10 +496,11 @@ const buildRequirementAgentUserMessage = (input: {
 - rule: ${input.instruction}
 
 Decision policy
-1. Extract known facts about objective, success criteria, constraints, and stakeholders.
-2. Identify any blocking gap.
-3. If there is no blocking gap, return kind="complete" and absorb minor uncertainty into assumptions.
-4. If there is a blocking gap, return kind="ask" with exactly one question about exactly one issue.
+1. Extract known facts about objective, success criteria, constraints, stakeholders, and major trade-offs.
+2. Draft decision-grade discussion points and important open questions.
+3. Identify whether one unresolved issue still materially blocks discussion quality.
+4. If there is no blocking gap, return kind="complete", explain why the current information is sufficient, absorb minor uncertainty into assumptions, and keep important unresolved items in openQuestions.
+5. If there is a blocking gap, return kind="ask" with exactly one question about exactly one issue, plus 2-3 example options and a short invitation to answer freely.
 
 Conversation
 ${conversation}`;

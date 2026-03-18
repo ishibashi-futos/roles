@@ -12,6 +12,7 @@ export interface ReportAgent {
     phase1Result: {
       requirements: unknown;
       discussionPoints: unknown;
+      openQuestions: unknown;
       roles: unknown;
     };
     phase2: {
@@ -40,7 +41,7 @@ Do not output JSON.
 ${
   isCircuitBreaker
     ? "The 残課題 section must explicitly mention forced_stop and every unresolved discussion point."
-    : "Summarize only the final discussion outcomes and open questions."
+    : "Summarize only the final discussion outcomes and unresolved open questions from phase1 and phase2."
 }`;
 
 const createClientFromEnv = () => {

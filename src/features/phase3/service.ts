@@ -1,6 +1,9 @@
 import { logger } from "../../shared/logger";
 import { WorkflowSessionRepository } from "../../shared/workflow-session-repository";
-import type { WorkflowSession } from "../../shared/workflow-types";
+import {
+  getPhase2DiscussionPoints,
+  type WorkflowSession,
+} from "../../shared/workflow-types";
 import { validateReportMarkdown } from "./report-markdown";
 import type { ReportAgent } from "./agent";
 
@@ -95,7 +98,7 @@ export class Phase3Service {
       throw new Error("session_phase1_not_completed");
     }
 
-    const unresolvedDiscussionPoints = phase1Result.discussionPoints
+    const unresolvedDiscussionPoints = getPhase2DiscussionPoints(phase1Result)
       .filter((point) =>
         session.phase2.pointStatuses.some(
           (status) =>
@@ -109,7 +112,8 @@ export class Phase3Service {
       topic: session.topic,
       phase1Result: {
         requirements: phase1Result.requirements,
-        discussionPoints: phase1Result.discussionPoints,
+        discussionPoints: getPhase2DiscussionPoints(phase1Result),
+        openQuestions: phase1Result.openQuestions,
         roles: phase1Result.roles,
       },
       phase2: {
