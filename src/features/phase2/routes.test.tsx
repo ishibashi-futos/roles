@@ -202,6 +202,7 @@ describe("phase2 routes", () => {
     expect(html).toContain("/report/");
     expect(html).toContain("Meta を含めてコピー");
     expect(html).toContain("議論を再開");
+    expect(html).toContain("+5ターン");
     expect(html).toContain("新しいセッションで方向修正");
   });
 
@@ -373,6 +374,142 @@ describe("phase2 routes", () => {
 
     expect(session.phase2.effectiveMaxTurnsPerPoint).toBe(18);
     expect(session.phase2.effectiveMaxTotalTurns).toBe(60);
+  });
+
+  test("実行中に論点ターン数と総ターン数を追加できる", async () => {
+    const repository = createTestRepository();
+    const facilitatorAgent: FacilitatorAgent = {
+      async decide(input) {
+        return {
+          discussionPointId: input.currentDiscussionPoint.id,
+          targetRoleId: "role-1",
+          message: `${input.currentDiscussionPoint.title}について意見をお願いします。`,
+        };
+      },
+    };
+    const roleAgent: RoleAgent = {
+      async speak(input) {
+        await Bun.sleep(50);
+        return `${input.role.name}として回答します。`;
+      },
+    };
+    const judgeAgent: JudgeAgent = {
+      async decide() {
+        return {
+          isResolved: false,
+          reason: "まだ追加議論が必要です。",
+        };
+      },
+    };
+
+    const app = createTestApp({
+      repository,
+      requirementAgent: completeImmediatelyRequirementAgent,
+      facilitatorAgent,
+      roleAgent,
+      judgeAgent,
+    });
+    const sessionId = await createSession(app);
+
+    const startResponse = await app.request(
+      `/api/sessions/${sessionId}/phase2/start`,
+      {
+        method: "POST",
+      },
+    );
+
+    expect(startResponse.status).toBe(202);
+
+    const addPointResponse = await app.request(
+      `/api/sessions/${sessionId}/phase2/points/point-1/add-turns`,
+      {
+        method: "POST",
+      },
+    );
+    expect(addPointResponse.status).toBe(204);
+
+    const addTotalResponse = await app.request(
+      `/api/sessions/${sessionId}/phase2/add-total-turns`,
+      {
+        method: "POST",
+      },
+    );
+    expect(addTotalResponse.status).toBe(204);
+
+    const stateResponse = await app.request(
+      `/api/sessions/${sessionId}/phase2/state`,
+    );
+    const state = (await stateResponse.json()) as {
+      phase2: {
+        status: string;
+        totalTurnAdjustment: number;
+        pointTurnAdjustments: Array<{
+          discussionPointId: string;
+          addedTurns: number;
+        }>;
+        effectiveCurrentPointMaxTurns: number;
+        effectiveMaxTotalTurns: number;
+        effectivePointTurnLimits: Array<{
+          discussionPointId: string;
+          effectiveMaxTurns: number;
+          addedTurns: number;
+        }>;
+      };
+    };
+
+    expect(state.phase2.status).toBe("running");
+    expect(state.phase2.totalTurnAdjustment).toBe(5);
+    expect(state.phase2.effectiveCurrentPointMaxTurns).toBe(23);
+    expect(state.phase2.effectiveMaxTotalTurns).toBe(65);
+    expect(state.phase2.pointTurnAdjustments).toContainEqual({
+      discussionPointId: "point-1",
+      addedTurns: 5,
+    });
+    expect(
+      state.phase2.effectivePointTurnLimits.some(
+        (point) =>
+          point.discussionPointId === "point-1" &&
+          point.effectiveMaxTurns === 23 &&
+          point.addedTurns === 5,
+      ),
+    ).toBe(true);
+
+    const events = repository.getEventHistory(sessionId);
+    expect(
+      events.filter((event) => event.event === "phase2_turn_budget_updated"),
+    ).toHaveLength(2);
+  });
+
+  test("実行中以外はターン数を追加できない", async () => {
+    const app = createTestApp({
+      repository: createTestRepository(),
+      requirementAgent: completeImmediatelyRequirementAgent,
+      facilitatorAgent: {
+        async decide() {
+          throw new Error("unexpected");
+        },
+      },
+      roleAgent: {
+        async speak() {
+          throw new Error("unexpected");
+        },
+      },
+      judgeAgent: {
+        async decide() {
+          throw new Error("unexpected");
+        },
+      },
+    });
+    const sessionId = await createSession(app);
+
+    const response = await app.request(
+      `/api/sessions/${sessionId}/phase2/add-total-turns`,
+      {
+        method: "POST",
+      },
+    );
+
+    expect(response.status).toBe(409);
   });
 
   test("Phase1 未完了では開始できない", async () => {

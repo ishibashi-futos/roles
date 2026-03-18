@@ -9,6 +9,7 @@ import type {
   Phase3CompletionReason,
   Phase2CompletionReason,
   Phase2Error,
+  PointTurnAdjustment,
   PointStatus,
   RequirementMessage,
   WorkflowSession,
@@ -36,6 +37,8 @@ type SessionRow = {
   phase2_total_turn_count: number;
   phase2_max_turns_per_point_override: number | null;
   phase2_max_total_turns_override: number | null;
+  phase2_point_turn_adjustments: string;
+  phase2_total_turn_adjustment: number;
   phase2_messages: string;
   phase2_point_statuses: string;
   phase2_judge_decisions: string;
@@ -99,6 +102,11 @@ const mapSession = (row: SessionRow): WorkflowSession => ({
     totalTurnCount: row.phase2_total_turn_count,
     maxTurnsPerPointOverride: row.phase2_max_turns_per_point_override,
     maxTotalTurnsOverride: row.phase2_max_total_turns_override,
+    pointTurnAdjustments: parseJson<PointTurnAdjustment[]>(
+      row.phase2_point_turn_adjustments,
+      [],
+    ),
+    totalTurnAdjustment: row.phase2_total_turn_adjustment,
     messages: parseJson<ArenaMessage[]>(row.phase2_messages, []),
     pointStatuses: parseJson<PointStatus[]>(row.phase2_point_statuses, []),
     judgeDecisions: parseJson<JudgeDecisionRecord[]>(
@@ -160,6 +168,8 @@ export class WorkflowSessionRepository {
         phase2_total_turn_count INTEGER NOT NULL,
         phase2_max_turns_per_point_override INTEGER,
         phase2_max_total_turns_override INTEGER,
+        phase2_point_turn_adjustments TEXT NOT NULL DEFAULT '[]',
+        phase2_total_turn_adjustment INTEGER NOT NULL DEFAULT 0,
         phase2_messages TEXT NOT NULL,
         phase2_point_statuses TEXT NOT NULL,
         phase2_judge_decisions TEXT NOT NULL DEFAULT '[]',
@@ -296,6 +306,8 @@ export class WorkflowSessionRepository {
         totalTurnCount: sourceSession.phase2.totalTurnCount,
         maxTurnsPerPointOverride: input.maxTurnsPerPointOverride,
         maxTotalTurnsOverride: input.maxTotalTurnsOverride,
+        pointTurnAdjustments: [...sourceSession.phase2.pointTurnAdjustments],
+        totalTurnAdjustment: sourceSession.phase2.totalTurnAdjustment,
         messages: [...sourceSession.phase2.messages],
         pointStatuses: sourceSession.phase2.pointStatuses.map((status) => ({
           ...status,
@@ -525,6 +537,54 @@ export class WorkflowSessionRepository {
     session.phase2.totalTurnCount =
       values.totalTurnCount ?? session.phase2.totalTurnCount;
     this.saveSession(session);
+    return session;
+  }
+
+  addPointTurns(
+    sessionId: string,
+    discussionPointId: string,
+    addedTurns: number,
+  ) {
+    const session = this.requireSession(sessionId);
+    const existing = session.phase2.pointTurnAdjustments.find(
+      (adjustment) => adjustment.discussionPointId === discussionPointId,
+    );
+    if (existing) {
+      existing.addedTurns += addedTurns;
+    } else {
+      session.phase2.pointTurnAdjustments.push({
+        discussionPointId,
+        addedTurns,
+      });
+    }
+    this.saveSession(session);
+    this.pushEvent(sessionId, {
+      id: 0,
+      event: "phase2_turn_budget_updated",
+      data: {
+        sessionId,
+        scope: "point",
+        discussionPointId,
+        addedTurns,
+      },
+    });
+    return session;
+  }
+
+  addTotalTurns(sessionId: string, addedTurns: number) {
+    const session = this.requireSession(sessionId);
+    session.phase2.totalTurnAdjustment += addedTurns;
+    this.saveSession(session);
+    this.pushEvent(sessionId, {
+      id: 0,
+      event: "phase2_turn_budget_updated",
+      data: {
+        sessionId,
+        scope: "total",
+        discussionPointId: null,
+        addedTurns,
+      },
+    });
     return session;
   }
 
@@ -779,6 +839,8 @@ export class WorkflowSessionRepository {
           phase2_total_turn_count = ?,
           phase2_max_turns_per_point_override = ?,
           phase2_max_total_turns_override = ?,
+          phase2_point_turn_adjustments = ?,
+          phase2_total_turn_adjustment = ?,
           phase2_messages = ?,
           phase2_point_statuses = ?,
           phase2_judge_decisions = ?,
@@ -809,6 +871,8 @@ export class WorkflowSessionRepository {
         session.phase2.totalTurnCount,
         session.phase2.maxTurnsPerPointOverride,
         session.phase2.maxTotalTurnsOverride,
+        serialize(session.phase2.pointTurnAdjustments),
+        session.phase2.totalTurnAdjustment,
         serialize(session.phase2.messages),
         serialize(session.phase2.pointStatuses),
         serialize(session.phase2.judgeDecisions),
@@ -846,6 +910,14 @@ export class WorkflowSessionRepository {
       {
         name: "phase2_max_total_turns_override",
         sql: "ALTER TABLE sessions ADD COLUMN phase2_max_total_turns_override INTEGER",
+      },
+      {
+        name: "phase2_point_turn_adjustments",
+        sql: "ALTER TABLE sessions ADD COLUMN phase2_point_turn_adjustments TEXT NOT NULL DEFAULT '[]'",
+      },
+      {
+        name: "phase2_total_turn_adjustment",
+        sql: "ALTER TABLE sessions ADD COLUMN phase2_total_turn_adjustment INTEGER NOT NULL DEFAULT 0",
       },
       {
         name: "phase2_judge_decisions",
@@ -895,12 +967,13 @@ export class WorkflowSessionRepository {
           phase1_user_reply_count, phase1_is_processing, phase1_error_message,
           phase2_status, phase2_current_discussion_point_index, phase2_current_turn_count,
           phase2_total_turn_count, phase2_max_turns_per_point_override,
-          phase2_max_total_turns_override, phase2_messages, phase2_point_statuses,
+          phase2_max_total_turns_override, phase2_point_turn_adjustments,
+          phase2_total_turn_adjustment, phase2_messages, phase2_point_statuses,
           phase2_judge_decisions, phase2_last_judge_decision, phase2_completion_reason,
           phase2_is_processing, phase2_error, phase3_status, phase3_report_markdown,
           phase3_completion_reason, phase3_is_processing, phase3_error_message,
           created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         session.id,
@@ -918,6 +991,8 @@ export class WorkflowSessionRepository {
         session.phase2.totalTurnCount,
         session.phase2.maxTurnsPerPointOverride,
         session.phase2.maxTotalTurnsOverride,
+        serialize(session.phase2.pointTurnAdjustments),
+        session.phase2.totalTurnAdjustment,
         serialize(session.phase2.messages),
         serialize(session.phase2.pointStatuses),
         serialize(session.phase2.judgeDecisions),

@@ -14,14 +14,29 @@ type RegisterPhase2RoutesOptions = {
 const buildPhase2StateResponse = (
   session: NonNullable<ReturnType<Phase2Service["getSession"]>>,
   service: Phase2Service,
-) => ({
-  ...session,
-  phase2: {
-    ...session.phase2,
-    effectiveMaxTurnsPerPoint: service.getEffectiveMaxTurnsPerPoint(session),
-    effectiveMaxTotalTurns: service.getEffectiveMaxTotalTurns(session),
-  },
-});
+) => {
+  const effectivePointTurnLimits = service
+    .getEffectivePointTurnLimits(session)
+    .map((point) => ({
+      ...point,
+      decisionOwnerName:
+        session.phase1.result?.roles.find(
+          (role) => role.id === point.decisionOwnerRoleId,
+        )?.name ?? point.decisionOwnerRoleId,
+    }));
+
+  return {
+    ...session,
+    phase2: {
+      ...session.phase2,
+      effectiveMaxTurnsPerPoint: service.getEffectiveMaxTurnsPerPoint(session),
+      effectiveCurrentPointMaxTurns:
+        service.getEffectiveMaxTurnsPerPoint(session),
+      effectiveMaxTotalTurns: service.getEffectiveMaxTotalTurns(session),
+      effectivePointTurnLimits,
+    },
+  };
+};
 
 const ArenaPage = ({ sessionId }: { sessionId: string }) => (
   <main class="min-h-screen bg-[radial-gradient(circle_at_top_left,_rgba(59,130,246,0.26),_transparent_26%),radial-gradient(circle_at_top_right,_rgba(16,185,129,0.18),_transparent_28%),radial-gradient(circle_at_bottom,_rgba(139,92,246,0.18),_transparent_34%),linear-gradient(180deg,#081120_0%,#0b1730_55%,#081120_100%)] px-4 py-8">
@@ -87,7 +102,16 @@ const ArenaPage = ({ sessionId }: { sessionId: string }) => (
               </div>
               <div>
                 <p class="text-slate-400">総ターン数</p>
-                <p id="total-turn-count" class="mt-1" />
+                <div class="mt-2 flex items-center justify-between gap-3">
+                  <p id="total-turn-count" class="text-slate-200" />
+                  <button
+                    id="add-total-turns-button"
+                    type="button"
+                    class="rounded-full border border-cyan-300/40 bg-cyan-300/10 px-3 py-1 text-xs font-semibold text-cyan-100"
+                  >
+                    +5ターン
+                  </button>
+                </div>
               </div>
               <div>
                 <p class="text-slate-400">直近 Judge 判定</p>
@@ -178,6 +202,8 @@ const state = {
   phase3EventSource: null,
   seenEventIds: new Set(),
   shouldAutoNavigateToReport: false,
+  adjustingPointIds: new Set(),
+  isAdjustingTotalTurns: false,
 };
 
 const messages = document.getElementById("messages");
@@ -186,6 +212,7 @@ const banner = document.getElementById("banner");
 const currentPoint = document.getElementById("current-point");
 const currentTurnCount = document.getElementById("current-turn-count");
 const totalTurnCount = document.getElementById("total-turn-count");
+const addTotalTurnsButton = document.getElementById("add-total-turns-button");
 const judgeResult = document.getElementById("judge-result");
 const pointStatuses = document.getElementById("point-statuses");
 const copyDiscussionButton = document.getElementById("copy-discussion-button");
@@ -214,6 +241,8 @@ const canResumeDiscussion = () =>
     (pointStatus) => pointStatus.status !== "resolved",
   );
 
+const canAdjustTurns = () => state.session.phase2.status === "running";
+
 const completionReasonLabel = (reason) => {
   if (reason === "resolved") {
     return "resolved";
@@ -229,12 +258,14 @@ const completionReasonLabel = (reason) => {
 
 const formatTurnCount = (current, max) => String(current) + " / " + String(max);
 
+const getCurrentPointLimit = () =>
+  state.session.phase2.effectivePointTurnLimits.find((point) => point.isCurrent) || null;
+
 const buildDiscussionCopyText = () => {
   if (!state.session) {
     return "";
   }
 
-  const discussionPoints = state.session.phase1.result?.discussionPoints || [];
   const messagesText = state.session.phase2.messages.map((message) => {
     return [
       \`## Turn \${message.turnNumber}\`,
@@ -244,10 +275,11 @@ const buildDiscussionCopyText = () => {
       message.content,
     ].join("\\n");
   }).join("\\n\\n");
-  const pointStatusesText = state.session.phase2.pointStatuses.map((pointStatus) => {
-    const point = discussionPoints.find((candidate) => candidate.id === pointStatus.discussionPointId);
-    return \`- \${point?.title || pointStatus.discussionPointId}: \${pointStatus.status}\`;
+  const pointStatusesText = state.session.phase2.effectivePointTurnLimits.map((point) => {
+    const base = \`- \${point.title}: \${point.status} / 上限 \${point.effectiveMaxTurns}\`;
+    return point.addedTurns > 0 ? base + \` (追加 \${point.addedTurns})\` : base;
   }).join("\\n");
+  const currentPointLimit = getCurrentPointLimit();
 
   return [
     "# Meta",
@@ -265,12 +297,12 @@ const buildDiscussionCopyText = () => {
     completionReasonLabel(state.session.phase2.completionReason),
     "",
     "- 現在の論点",
-    discussionPoints[state.session.phase2.currentDiscussionPointIndex]?.title || "完了",
+    currentPointLimit?.title || "完了",
     "",
     "- 現在論点ターン数",
     formatTurnCount(
       state.session.phase2.currentTurnCount,
-      state.session.phase2.effectiveMaxTurnsPerPoint,
+      currentPointLimit?.effectiveMaxTurns ?? state.session.phase2.effectiveCurrentPointMaxTurns,
     ),
     "",
     "- 総ターン数",
@@ -302,18 +334,33 @@ const renderMessages = () => {
 };
 
 const renderPointStatuses = () => {
-  const discussionPoints = state.session.phase1.result?.discussionPoints || [];
-  pointStatuses.innerHTML = state.session.phase2.pointStatuses.map((pointStatus) => {
-    const point = discussionPoints.find((candidate) => candidate.id === pointStatus.discussionPointId);
-    const title = point ? point.title : pointStatus.discussionPointId;
-    const decisionOwnerName = point
-      ? (state.session.phase1.result?.roles || []).find((role) => role.id === point.decisionOwnerRoleId)?.name || point.decisionOwnerRoleId
-      : "-";
+  pointStatuses.innerHTML = state.session.phase2.effectivePointTurnLimits.map((point) => {
+    const isDisabled =
+      !canAdjustTurns() ||
+      point.status === "resolved" ||
+      state.adjustingPointIds.has(point.discussionPointId);
     return \`
       <article class="rounded-2xl border border-white/10 bg-black/10 px-4 py-3">
-        <p class="text-sm font-semibold text-slate-100">\${escapeHtml(title)}</p>
-        <p class="mt-1 text-xs text-slate-300">意思決定者: \${escapeHtml(decisionOwnerName)}</p>
-        <p class="mt-1 text-xs uppercase tracking-[0.24em] text-slate-400">\${escapeHtml(pointStatus.status)}</p>
+        <div class="flex items-start justify-between gap-3">
+          <div class="min-w-0">
+            <p class="text-sm font-semibold text-slate-100">\${escapeHtml(point.title)}</p>
+            <p class="mt-1 text-xs text-slate-300">意思決定者: \${escapeHtml(point.decisionOwnerName)}</p>
+          </div>
+          <button
+            type="button"
+            data-point-turn-button="true"
+            data-discussion-point-id="\${escapeHtml(point.discussionPointId)}"
+            class="rounded-full border border-cyan-300/40 bg-cyan-300/10 px-3 py-1 text-xs font-semibold text-cyan-100 disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-white/5 disabled:text-slate-500"
+            \${isDisabled ? "disabled" : ""}
+          >
+            +5ターン
+          </button>
+        </div>
+        <div class="mt-3 flex items-center justify-between gap-3 text-xs">
+          <p class="text-slate-300">上限: \${escapeHtml(String(point.effectiveMaxTurns))}</p>
+          <p class="text-slate-400">\${point.addedTurns > 0 ? escapeHtml(\`追加済み: +\${point.addedTurns}\`) : "追加なし"}</p>
+        </div>
+        <p class="mt-1 text-xs uppercase tracking-[0.24em] text-slate-400">\${escapeHtml(point.status)}</p>
       </article>
     \`;
   }).join("");
@@ -358,17 +405,17 @@ const renderBanner = () => {
 };
 
 const renderDashboard = () => {
-  const discussionPoints = state.session.phase1.result?.discussionPoints || [];
-  const current = discussionPoints[state.session.phase2.currentDiscussionPointIndex];
+  const current = getCurrentPointLimit();
   currentPoint.textContent = current ? current.title : "完了";
   currentTurnCount.textContent = formatTurnCount(
     state.session.phase2.currentTurnCount,
-    state.session.phase2.effectiveMaxTurnsPerPoint,
+    state.session.phase2.effectiveCurrentPointMaxTurns,
   );
   totalTurnCount.textContent = formatTurnCount(
     state.session.phase2.totalTurnCount,
     state.session.phase2.effectiveMaxTotalTurns,
   );
+  addTotalTurnsButton.disabled = !canAdjustTurns() || state.isAdjustingTotalTurns;
   judgeResult.textContent = state.session.phase2.lastJudgeDecision
     ? \`\${state.session.phase2.lastJudgeDecision.isResolved ? "resolved" : "pending"}\\n\${state.session.phase2.lastJudgeDecision.reason}\`
     : "まだ判定はありません。";
@@ -448,8 +495,9 @@ const connectPhase2Events = () => {
     }
     const payload = JSON.parse(event.data);
     state.session.phase2.lastJudgeDecision = payload.result;
-    const pointStatuses = state.session.phase2.pointStatuses;
-    const pointStatus = pointStatuses.find((item) => item.discussionPointId === payload.result.discussionPointId);
+    const pointStatus = state.session.phase2.pointStatuses.find(
+      (item) => item.discussionPointId === payload.result.discussionPointId,
+    );
     if (pointStatus && payload.result.isResolved) {
       pointStatus.status = "resolved";
       state.session.phase2.currentDiscussionPointIndex += 1;
@@ -459,6 +507,12 @@ const connectPhase2Events = () => {
     }
     state.session.phase2.totalTurnCount += 1;
     render();
+  });
+  state.phase2EventSource.addEventListener("phase2_turn_budget_updated", async (event) => {
+    if (!shouldHandleEvent(event)) {
+      return;
+    }
+    await hydrate();
   });
   state.phase2EventSource.addEventListener("phase2_completed", async (event) => {
     if (!shouldHandleEvent(event)) {
@@ -580,6 +634,32 @@ const ensureReportTracking = async (shouldAutoNavigate) => {
   await startReportIfNeeded();
 };
 
+const addTurnsToDiscussionPoint = async (discussionPointId) => {
+  state.adjustingPointIds.add(discussionPointId);
+  render();
+  const response = await fetch(\`/api/sessions/\${state.sessionId}/phase2/points/\${discussionPointId}/add-turns\`, {
+    method: "POST",
+  });
+  state.adjustingPointIds.delete(discussionPointId);
+  await hydrate();
+  if (!response.ok) {
+    statusText.textContent = "論点ターン数の追加に失敗しました。";
+  }
+};
+
+const addTurnsToTotal = async () => {
+  state.isAdjustingTotalTurns = true;
+  render();
+  const response = await fetch(\`/api/sessions/\${state.sessionId}/phase2/add-total-turns\`, {
+    method: "POST",
+  });
+  state.isAdjustingTotalTurns = false;
+  await hydrate();
+  if (!response.ok) {
+    statusText.textContent = "総ターン数の追加に失敗しました。";
+  }
+};
+
 retryButton.addEventListener("click", async () => {
   retryButton.disabled = true;
   const response = await fetch(\`/api/sessions/\${state.sessionId}/phase2/retry\`, {
@@ -608,6 +688,26 @@ copyDiscussionButton.addEventListener("click", async () => {
   } finally {
     copyDiscussionButton.disabled = false;
   }
+});
+
+addTotalTurnsButton.addEventListener("click", async () => {
+  await addTurnsToTotal();
+});
+
+pointStatuses.addEventListener("click", async (event) => {
+  const target = event.target;
+  if (!(target instanceof HTMLElement)) {
+    return;
+  }
+  const button = target.closest("[data-point-turn-button='true']");
+  if (!(button instanceof HTMLButtonElement)) {
+    return;
+  }
+  const discussionPointId = button.dataset.discussionPointId;
+  if (!discussionPointId || button.disabled) {
+    return;
+  }
+  await addTurnsToDiscussionPoint(discussionPointId);
 });
 
 resumeButton.addEventListener("click", async () => {
@@ -761,6 +861,70 @@ export const registerPhase2Routes = (
     }
   });
 
+  app.post(
+    "/api/sessions/:sessionId/phase2/points/:discussionPointId/add-turns",
+    (c) => {
+      const sessionId = c.req.param("sessionId");
+      const discussionPointId = c.req.param("discussionPointId");
+
+      try {
+        service.addTurnsToDiscussionPoint(sessionId, discussionPointId);
+        return c.body(null, 204);
+      } catch (error) {
+        const message =
+          error instanceof Error ? error.message : "unexpected_error";
+        logger.error("Phase2 point turns update failed", {
+          sessionId,
+          discussionPointId,
+          message,
+        });
+        if (message === "session_not_found") {
+          return c.json({ message: "session not found." }, 404);
+        }
+        if (message === "discussion_point_not_found") {
+          return c.json({ message: "discussion point not found." }, 404);
+        }
+        if (
+          message === "session_phase1_not_completed" ||
+          message === "phase2_not_running" ||
+          message === "discussion_point_not_adjustable"
+        ) {
+          return c.json(
+            { message: "this discussion point cannot be adjusted." },
+            409,
+          );
+        }
+        return c.json({ message: "failed to update point turns." }, 500);
+      }
+    },
+  );
+
+  app.post("/api/sessions/:sessionId/phase2/add-total-turns", (c) => {
+    const sessionId = c.req.param("sessionId");
+
+    try {
+      service.addTurnsToTotal(sessionId);
+      return c.body(null, 204);
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "unexpected_error";
+      logger.error("Phase2 total turns update failed", {
+        sessionId,
+        message,
+      });
+      if (message === "session_not_found") {
+        return c.json({ message: "session not found." }, 404);
+      }
+      if (
+        message === "session_phase1_not_completed" ||
+        message === "phase2_not_running"
+      ) {
+        return c.json({ message: "this session cannot be adjusted." }, 409);
+      }
+      return c.json({ message: "failed to update total turns." }, 500);
+    }
+  });
+
   app.post("/api/sessions/:sessionId/phase2/resume", (c) => {
     const sessionId = c.req.param("sessionId");
 
@@ -815,6 +979,7 @@ export const registerPhase2Routes = (
           event.event !== "phase2_started" &&
           event.event !== "arena_message" &&
           event.event !== "judge_result" &&
+          event.event !== "phase2_turn_budget_updated" &&
           event.event !== "phase2_completed" &&
           !(event.event === "error" && session.phase2.status === "failed")
         ) {

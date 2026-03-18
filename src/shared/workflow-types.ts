@@ -100,6 +100,11 @@ export type PointStatus = {
   status: PointStatusValue;
 };
 
+export type PointTurnAdjustment = {
+  discussionPointId: string;
+  addedTurns: number;
+};
+
 export type JudgeDecision = {
   isResolved: boolean;
   reason: string;
@@ -135,6 +140,8 @@ export type Phase2State = {
   totalTurnCount: number;
   maxTurnsPerPointOverride: number | null;
   maxTotalTurnsOverride: number | null;
+  pointTurnAdjustments: PointTurnAdjustment[];
+  totalTurnAdjustment: number;
   messages: ArenaMessage[];
   pointStatuses: PointStatus[];
   judgeDecisions: JudgeDecisionRecord[];
@@ -235,6 +242,16 @@ export type Phase2SseEvent =
     }
   | {
       id: number;
+      event: "phase2_turn_budget_updated";
+      data: {
+        sessionId: string;
+        scope: "point" | "total";
+        discussionPointId: string | null;
+        addedTurns: number;
+      };
+    }
+  | {
+      id: number;
       event: "phase2_completed";
       data: {
         sessionId: string;
@@ -283,6 +300,8 @@ export const createInitialPhase2State = (): Phase2State => ({
   totalTurnCount: 0,
   maxTurnsPerPointOverride: null,
   maxTotalTurnsOverride: null,
+  pointTurnAdjustments: [],
+  totalTurnAdjustment: 0,
   messages: [],
   pointStatuses: [],
   judgeDecisions: [],

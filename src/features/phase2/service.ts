@@ -2,7 +2,6 @@ import { logger } from "../../shared/logger";
 import { WorkflowSessionRepository } from "../../shared/workflow-session-repository";
 import { getPhase2DiscussionPoints } from "../../shared/workflow-types";
 import type {
-  ArenaMessage,
   FacilitatorDecision,
   Phase2CompletionReason,
   Phase2Error,
@@ -23,12 +22,11 @@ type Phase2ServiceOptions = {
 
 const FACILITATOR_ID = "facilitator";
 const FACILITATOR_NAME = "ファシリテーター";
-const JUDGE_ID = "judge";
-const JUDGE_NAME = "Judge";
 const DEFAULT_MAX_TURNS_PER_POINT = 18;
 const DEFAULT_MAX_TOTAL_TURNS = 60;
 const RESUME_MAX_TURNS_PER_POINT = DEFAULT_MAX_TURNS_PER_POINT * 2;
 const RESUME_MAX_TOTAL_TURNS_PER_DISCUSSION_POINT = DEFAULT_MAX_TOTAL_TURNS / 2;
+export const TURN_INCREMENT = 5;
 
 export class Phase2Service {
   private readonly maxTurnsPerPoint: number;
@@ -66,12 +64,60 @@ export class Phase2Service {
     return this.repository.getEventHistory(sessionId);
   }
 
-  getEffectiveMaxTurnsPerPoint(session: WorkflowSession) {
-    return this.getMaxTurnsPerPoint(session);
+  getEffectiveMaxTurnsPerPoint(
+    session: WorkflowSession,
+    discussionPointId?: string,
+  ) {
+    const targetDiscussionPointId =
+      discussionPointId ?? this.getCurrentDiscussionPoint(session)?.id;
+    return (
+      this.getBaseMaxTurnsPerPoint(session) +
+      this.getPointTurnAdjustment(session, targetDiscussionPointId)
+    );
   }
 
   getEffectiveMaxTotalTurns(session: WorkflowSession) {
-    return this.getMaxTotalTurns(session);
+    return (
+      this.getBaseMaxTotalTurns(session) + session.phase2.totalTurnAdjustment
+    );
+  }
+
+  getEffectivePointTurnLimits(session: WorkflowSession) {
+    const discussionPoints = this.getDiscussionPoints(session);
+    return discussionPoints.map((point, index) => ({
+      discussionPointId: point.id,
+      title: point.title,
+      decisionOwnerRoleId: point.decisionOwnerRoleId,
+      effectiveMaxTurns: this.getEffectiveMaxTurnsPerPoint(session, point.id),
+      addedTurns: this.getPointTurnAdjustment(session, point.id),
+      isCurrent: index === session.phase2.currentDiscussionPointIndex,
+      status:
+        session.phase2.pointStatuses.find(
+          (pointStatus) => pointStatus.discussionPointId === point.id,
+        )?.status ?? "pending",
+    }));
+  }
+
+  addTurnsToDiscussionPoint(sessionId: string, discussionPointId: string) {
+    const session = this.requireTurnAdjustableSession(sessionId);
+    const point = this.getDiscussionPoints(session).find(
+      (candidate) => candidate.id === discussionPointId,
+    );
+    if (!point) {
+      throw new Error("discussion_point_not_found");
+    }
+    const status = session.phase2.pointStatuses.find(
+      (pointStatus) => pointStatus.discussionPointId === discussionPointId,
+    );
+    if (!status || status.status === "resolved") {
+      throw new Error("discussion_point_not_adjustable");
+    }
+    this.repository.addPointTurns(sessionId, discussionPointId, TURN_INCREMENT);
+  }
+
+  addTurnsToTotal(sessionId: string) {
+    this.requireTurnAdjustableSession(sessionId);
+    this.repository.addTotalTurns(sessionId, TURN_INCREMENT);
   }
 
   start(sessionId: string) {
@@ -142,7 +188,10 @@ export class Phase2Service {
           return;
         }
 
-        if (session.phase2.totalTurnCount >= this.getMaxTotalTurns(session)) {
+        if (
+          session.phase2.totalTurnCount >=
+          this.getEffectiveMaxTotalTurns(session)
+        ) {
           await this.finishWithCircuitBreaker(session);
           return;
         }
@@ -155,7 +204,8 @@ export class Phase2Service {
         }
 
         if (
-          session.phase2.currentTurnCount >= this.getMaxTurnsPerPoint(session)
+          session.phase2.currentTurnCount >=
+          this.getEffectiveMaxTurnsPerPoint(session, currentPoint.id)
         ) {
           this.repository.setPointStatus(
             sessionId,
@@ -332,12 +382,47 @@ export class Phase2Service {
     return session;
   }
 
-  private getMaxTurnsPerPoint(session: WorkflowSession) {
+  private requireTurnAdjustableSession(sessionId: string) {
+    const session = this.requireRunnableSession(sessionId);
+    if (session.phase2.status !== "running") {
+      throw new Error("phase2_not_running");
+    }
+    return session;
+  }
+
+  private getDiscussionPoints(session: WorkflowSession) {
+    if (!session.phase1.result) {
+      return [];
+    }
+    return getPhase2DiscussionPoints(session.phase1.result);
+  }
+
+  private getCurrentDiscussionPoint(session: WorkflowSession) {
+    return this.getDiscussionPoints(session)[
+      session.phase2.currentDiscussionPointIndex
+    ];
+  }
+
+  private getBaseMaxTurnsPerPoint(session: WorkflowSession) {
     return session.phase2.maxTurnsPerPointOverride ?? this.maxTurnsPerPoint;
   }
 
-  private getMaxTotalTurns(session: WorkflowSession) {
+  private getBaseMaxTotalTurns(session: WorkflowSession) {
     return session.phase2.maxTotalTurnsOverride ?? this.maxTotalTurns;
+  }
+
+  private getPointTurnAdjustment(
+    session: WorkflowSession,
+    discussionPointId?: string,
+  ) {
+    if (!discussionPointId) {
+      return 0;
+    }
+    return (
+      session.phase2.pointTurnAdjustments.find(
+        (adjustment) => adjustment.discussionPointId === discussionPointId,
+      )?.addedTurns ?? 0
+    );
   }
 
   private validateFacilitatorDecision(
